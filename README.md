@@ -32,7 +32,7 @@ angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1
 | 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
 | AngelLive 原生播放 | HLS／FLV 直播、HLS 回放 | HLS／FLV、多畫質、雙 CDN |
 | 分享連結解析 | 支援 Square audio、replay、audiospace、uni-qr | 支援 stream-room `shareCode` |
-| 彈幕／聊天 | 公開聊天室每 3 秒更新 | 匿名 WebSocket 即時聊天及最近歷史 |
+| 彈幕／聊天 | 公開 WebSocket 驅動聊天室每 3 秒增量更新 | 匿名 WebSocket 即時聊天及最近歷史 |
 
 OKX 的官方直播狀態、聊天與 Web 平台播放資訊都可以透過臨時匿名 token 讀取。本插件只把實際 HLS／FLV 媒體地址交給 AngelLive，不會把官方網頁 URL 偽裝成直播串流。
 
@@ -67,7 +67,7 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.2.zip
+dist/binance-1.2.3.zip
 dist/okx-1.2.2.zip
 dist/source.json
 dist/source-binance.json

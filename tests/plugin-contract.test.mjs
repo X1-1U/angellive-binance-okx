@@ -79,6 +79,15 @@ function assertRoom(room, expectedType) {
 const binanceList = await fixture("binance-live-list.json");
 const binanceDetail = await fixture("binance-room-detail.json");
 const binanceChat = await fixture("binance-chat.json");
+const nextBinanceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
+  { seqId: 103, content: "第三條測試彈幕", displayName: "觀眾丙" },
+  { seqId: 104, content: "第四條測試彈幕", displayName: "觀眾丁" }
+] } };
+const largeSequenceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
+  { seqId: "90071992547409921", content: "大序號一", displayName: "甲" },
+  { seqId: "90071992547409922", content: "大序號二", displayName: "乙" }
+] } };
+let binanceChatCalls = 0;
 const binance = await loadPlugin("binance", async (input) => {
   const url = input.request.url;
   if (url.includes("feed/live/list")) {
@@ -91,7 +100,12 @@ const binance = await loadPlugin("binance", async (input) => {
   if (url.includes("audio-live-recommend/list")) {
     return { code: "000000", success: true, data: { spaceLiveList: [] } };
   }
-  if (url.includes("get-live-room-chat-message")) return binanceChat;
+  if (url.includes("get-live-room-chat-message")) {
+    binanceChatCalls += 1;
+    if (binanceChatCalls === 1) return binanceChat;
+    if (binanceChatCalls <= 3) return nextBinanceChat;
+    return largeSequenceChat;
+  }
   if (url.includes("room-detail")) return binanceDetail;
   throw new Error(`Unexpected Binance URL: ${url}`);
 });
@@ -117,48 +131,39 @@ assert.equal(binance.requests[0].request.headers.versioncode, "web");
 assert.deepEqual(JSON.parse(binance.requests[0].request.body), { pageIndex: 1, pageSize: 20 });
 assert.equal(binance.requests.some((item) => item.request.url.includes("feed-recommend/list")), true);
 const binanceDanmaku = await binance.plugin.getDanmaku({ roomId: "49990000123456" });
-assert.equal(binanceDanmaku.transport.kind, "http_polling");
+assert.equal(binanceDanmaku.transport.kind, "websocket");
+assert.equal(binanceDanmaku.transport.url, "wss://stream.binance.com:9443/ws");
+assert.equal(binanceDanmaku.transport.frameType, "text");
 assert.equal(binanceDanmaku.runtime.driver, "plugin_js_v1");
+assert.equal(binanceDanmaku.runtime.webSocketHeaderMode, "minimal_no_cookie");
 const danmakuSession = await binance.plugin.createDanmakuSession({
   connectionId: "fixture-connection",
   roomId: "49990000123456",
   args: binanceDanmaku.args
 });
-assert.equal(danmakuSession.timer.mode, "polling");
+assert.equal(danmakuSession.timer, undefined);
 assert.equal(danmakuSession.messages.length, 2);
-const nextBinanceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
-  { seqId: 103, content: "第三條測試彈幕", displayName: "觀眾丙" },
-  { seqId: 104, content: "第四條測試彈幕", displayName: "觀眾丁" }
-] } };
-const firstDanmakuFrame = await binance.plugin.onDanmakuFrame({
-  connectionId: "fixture-connection",
-  frameType: "http_response",
-  statusCode: 200,
-  text: JSON.stringify(nextBinanceChat)
+const binanceOpen = await binance.plugin.onDanmakuOpen({
+  connectionId: "fixture-connection"
 });
-assert.equal(firstDanmakuFrame.messages.length, 2);
-assert.equal(firstDanmakuFrame.messages[0].nickname, "觀眾丙");
-assert.equal(firstDanmakuFrame.timer.mode, "polling");
-assert.equal(firstDanmakuFrame.timer.intervalMs, 3000);
-const duplicateDanmakuFrame = await binance.plugin.onDanmakuFrame({
+assert.equal(binanceOpen.timer.mode, "heartbeat");
+assert.equal(binanceOpen.timer.intervalMs, 3000);
+const ignoredBinanceFrame = await binance.plugin.onDanmakuFrame({
   connectionId: "fixture-connection",
-  frameType: "http_response",
-  statusCode: 200,
-  text: JSON.stringify(nextBinanceChat)
+  frameType: "text",
+  text: JSON.stringify({ result: null, id: 1 })
 });
-assert.equal(duplicateDanmakuFrame.messages.length, 0);
-const largeSequenceFrame = await binance.plugin.onDanmakuFrame({
-  connectionId: "fixture-connection",
-  frameType: "http_response",
-  statusCode: 200,
-  text: JSON.stringify({ code: "000000", success: true, data: { liveRoomChatMessage: [
-    { seqId: "90071992547409921", content: "大序號一", displayName: "甲" },
-    { seqId: "90071992547409922", content: "大序號二", displayName: "乙" }
-  ] } })
-});
-assert.equal(largeSequenceFrame.messages.length, 2);
-const binanceTick = await binance.plugin.onDanmakuTick({ connectionId: "fixture-connection" });
-assert.equal(binanceTick.timer.intervalMs, 3000);
+assert.equal(ignoredBinanceFrame.messages.length, 0);
+assert.equal(ignoredBinanceFrame.timer.mode, "heartbeat");
+const firstBinanceTick = await binance.plugin.onDanmakuTick({ connectionId: "fixture-connection" });
+assert.equal(firstBinanceTick.messages.length, 2);
+assert.equal(firstBinanceTick.messages[0].nickname, "觀眾丙");
+assert.equal(firstBinanceTick.timer.mode, "heartbeat");
+assert.equal(firstBinanceTick.timer.intervalMs, 3000);
+const duplicateBinanceTick = await binance.plugin.onDanmakuTick({ connectionId: "fixture-connection" });
+assert.equal(duplicateBinanceTick.messages.length, 0);
+const largeSequenceTick = await binance.plugin.onDanmakuTick({ connectionId: "fixture-connection" });
+assert.equal(largeSequenceTick.messages.length, 2);
 assert.equal(
   binance.requests.some((item) => item.request.url.includes("get-live-room-chat-message") && item.request.url.includes("&_=")),
   true

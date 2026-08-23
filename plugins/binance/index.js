@@ -11,6 +11,7 @@ const _bn_cacheTTL = 60 * 1000;
 const _bn_discoveryTTL = 6 * 60 * 60 * 1000;
 const _bn_staleValidationLimit = 20;
 const _bn_danmakuIntervalMs = 3000;
+const _bn_danmakuClockURL = "wss://stream.binance.com:9443/ws";
 const _bn_runtime = {
   liveList: [],
   liveListFetchedAt: 0,
@@ -801,22 +802,22 @@ globalThis.LiveParsePlugin = {
     return {
       args: {
         roomId: roomId,
-        _danmu_type: "http_polling"
+        _danmu_type: "websocket"
       },
-      headers: _bn_chatHeaders(roomId),
+      headers: {
+        Origin: _bn_baseURL,
+        "User-Agent": _bn_ua
+      },
       transport: {
-        kind: "http_polling",
-        url: _bn_chatURL(roomId),
-        polling: {
-          method: "GET",
-          intervalMs: _bn_danmakuIntervalMs,
-          sendOnConnect: false
-        }
+        kind: "websocket",
+        url: _bn_danmakuClockURL,
+        frameType: "text"
       },
       runtime: {
         driver: "plugin_js_v1",
-        protocolId: "binance_square_chat_polling",
-        protocolVersion: "1"
+        protocolId: "binance_square_chat_ws_clock",
+        protocolVersion: "2",
+        webSocketHeaderMode: "minimal_no_cookie"
       }
     };
   },
@@ -837,14 +838,17 @@ globalThis.LiveParsePlugin = {
     _bn_runtime.danmakuSessions[connectionId] = session;
     return {
       ok: true,
-      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs },
       messages: await _bn_fetchChatMessages(session)
     };
   },
 
   async onDanmakuOpen(payload) {
     const session = _bn_danmakuSession(payload);
-    return session ? { ok: true } : { ok: false };
+    if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
+    return {
+      ok: true,
+      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
+    };
   },
 
   async onDanmakuTick(payload) {
@@ -853,7 +857,7 @@ globalThis.LiveParsePlugin = {
     return {
       ok: true,
       messages: await _bn_fetchChatMessages(session),
-      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs }
+      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
     };
   },
 
@@ -861,19 +865,10 @@ globalThis.LiveParsePlugin = {
     const runtimePayload = _bn_payload(payload);
     const session = _bn_danmakuSession(runtimePayload);
     if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
-    if (_bn_str(runtimePayload.frameType) !== "http_response") {
-      return { ok: true, messages: [] };
-    }
-    const status = _bn_num(runtimePayload.statusCode, 200);
-    if (status < 200 || status >= 300) {
-      _bn_throw(status === 429 ? "RATE_LIMITED" : "UPSTREAM", `Binance chat HTTP ${status}`, {
-        status: status
-      });
-    }
     return {
       ok: true,
-      messages: _bn_chatMessages(session, runtimePayload.text),
-      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs }
+      messages: [],
+      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
     };
   },
 
