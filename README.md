@@ -3,7 +3,7 @@
 這個專案包含兩個獨立的 AngelLive v2 原生插件包：
 
 - `binance`：Binance Square Live
-- `okx`：OKX Orbit Live（實驗性目錄插件）
+- `okx`：OKX Orbit Live
 
 兩者皆使用 `globalThis.LiveParsePlugin` API v1，不是瀏覽器擴充套件，也不是 Codex 插件。
 
