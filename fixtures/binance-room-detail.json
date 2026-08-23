@@ -1,0 +1,27 @@
+{
+  "code": "000000",
+  "message": "ok",
+  "success": true,
+  "data": {
+    "contentId": 39715484101961,
+    "liveStatus": 2,
+    "liveType": 3,
+    "title": "Binance Online",
+    "cover": "https://public.bnbstatic.com/example/replay-cover.png",
+    "onlineCount": 0,
+    "viewCount": 714607,
+    "replayStatus": 3,
+    "replayUrl": "https://bin.bnbstatic.com/static/live-ag/square_39715484101961/39715484101961.m3u8",
+    "userInfo": {
+      "squareUid": "fixture-official-uid",
+      "userName": "Binance_Square_Official",
+      "displayName": "Binance Square Official",
+      "avatar": "https://public.bnbstatic.com/example/official-avatar.png"
+    },
+    "playUrls": {
+      "flvPlayUrl": "https://bnliveplay-ag.bblivestream.com/live/square_39715484101961.flv",
+      "hlsPlayUrl": "https://bnliveplay-ag.bblivestream.com/live/square_39715484101961.m3u8"
+    },
+    "streamStatus": 0
+  }
+}

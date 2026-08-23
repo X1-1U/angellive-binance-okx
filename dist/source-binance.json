@@ -1,0 +1,65 @@
+{
+  "apiVersion": 1,
+  "generatedAt": "2026-08-23T14:28:43Z",
+  "sourceName": "Binance Square Live for AngelLive",
+  "plugins": [
+    {
+      "pluginId": "binance",
+      "version": "1.0.0",
+      "platform": "binance",
+      "platformName": "Binance Square Live",
+      "platformDescription": "Binance Square 公開直播與回放（非官方社群插件）",
+      "zipURLs": [
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.0.0.zip"
+      ],
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.0.0.zip",
+      "sha256": "fc105d8cca908b681ada88a74a0678f1b3986af862caabe00444a65de3506382",
+      "changelog": [
+        "1.0.0：加入 Binance Square 公開直播列表、房間詳情、直播狀態、HLS/FLV 播放、HLS 回放與分享連結解析"
+      ],
+      "auth": {
+        "required": false,
+        "credentialKinds": [
+
+        ],
+        "supportsStatusCheck": false,
+        "supportsValidation": false
+      },
+      "capabilities": {
+        "categories": {
+          "status": "available"
+        },
+        "rooms": {
+          "status": "available"
+        },
+        "playback": {
+          "status": "partial",
+          "reason": "支援公開 HLS/FLV 直播及 HLS 回放；僅提供 MP4 的舊回放不支援"
+        },
+        "search": {
+          "status": "partial",
+          "reason": "可搜尋目前直播，或直接輸入 Binance Square 直播連結／內容 ID"
+        },
+        "roomDetail": {
+          "status": "available"
+        },
+        "liveState": {
+          "status": "available"
+        },
+        "shareResolve": {
+          "status": "partial",
+          "reason": "支援 Square audio/replay、audiospace deep link 與 uni-qr 分享連結"
+        },
+        "danmaku": {
+          "status": "unavailable",
+          "reason": "Binance Square 即時聊天使用私有 IM 協議，未提供穩定的公開彈幕接口"
+        }
+      },
+      "icon": "assets/live_card_binance.png",
+      "iosIcon": "assets/live_card_binance.png",
+      "macosIcon": "assets/live_card_binance.png",
+      "tvosIcon": "assets/live_card_binance.png",
+      "visibility": "public"
+    }
+  ]
+}

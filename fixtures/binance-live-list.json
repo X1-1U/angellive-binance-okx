@@ -1,0 +1,22 @@
+{
+  "code": "000000",
+  "message": "ok",
+  "success": true,
+  "data": {
+    "spaceLiveList": [
+      {
+        "contentId": 49990000123456,
+        "liveStatus": 1,
+        "liveType": 3,
+        "title": "Binance Square 測試直播",
+        "cover": "https://public.bnbstatic.com/example/live-cover.png",
+        "onlineCount": 321,
+        "userInfo": {
+          "squareUid": "fixture-square-uid",
+          "displayName": "Binance 主播",
+          "avatar": "https://public.bnbstatic.com/example/avatar.png"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+.DS_Store
+androguard.db
+androguard.db-shm
+androguard.db-wal
+androguard.log

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="192" viewBox="0 0 320 192">
+  <rect width="320" height="192" rx="28" fill="#151515"/>
+  <circle cx="65" cy="96" r="53" fill="#F0B90B"/>
+  <g transform="translate(29 60) scale(.56)" fill="#101010">
+    <path d="M64 0 82 18 64 36 46 18Z"/>
+    <path d="M18 46 36 64 18 82 0 64Z"/>
+    <path d="M110 46 128 64 110 82 92 64Z"/>
+    <path d="M64 92 82 110 64 128 46 110Z"/>
+    <path d="M64 41 87 64 64 87 41 64Z"/>
+  </g>
+  <text x="137" y="83" fill="#F8F8F8" font-family="Helvetica Neue, Arial, sans-serif" font-size="26" font-weight="700">BINANCE</text>
+  <text x="137" y="112" fill="#F0B90B" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2">SQUARE LIVE</text>
+</svg>

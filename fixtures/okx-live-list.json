@@ -1,0 +1,22 @@
+{
+  "code": "0",
+  "data": {
+    "total": 1,
+    "users": [
+      {
+        "authorId": "872836765600919552",
+        "userUid": "302775325518122399",
+        "nickname": "OKX 測試主播",
+        "officialStatus": "0",
+        "portrait": "https://static.coinall.ltd/example/avatar.png",
+        "livestream": {
+          "shareCode": "fixtureShareCode-1",
+          "thumbnail": "https://static.okx.com/example/thumbnail.jpeg",
+          "title": "OKX Orbit 測試直播",
+          "viewerCount": 354
+        }
+      }
+    ]
+  },
+  "msg": ""
+}

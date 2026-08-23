@@ -1,0 +1,1 @@
+angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1U%2Fangellive-binance-okx%2Fmain%2Fdist%2Fsource.json

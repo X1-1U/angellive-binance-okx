@@ -1,0 +1,67 @@
+{
+  "pluginId": "okx",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "displayName": "OKX Orbit Live",
+  "platformDescription": "OKX Orbit 公開直播目錄（實驗性、非官方社群插件）",
+  "liveTypes": [
+    "okx"
+  ],
+  "entry": "index.js",
+  "auth": {
+    "required": false,
+    "credentialKinds": [],
+    "supportsStatusCheck": false,
+    "supportsValidation": false
+  },
+  "capabilities": {
+    "categories": {
+      "status": "available"
+    },
+    "rooms": {
+      "status": "available"
+    },
+    "playback": {
+      "status": "unavailable",
+      "reason": "OKX 目前要求登入官方 Stream Room，尚未提供可穩定直連的公開媒體 URL"
+    },
+    "search": {
+      "status": "available"
+    },
+    "roomDetail": {
+      "status": "partial",
+      "reason": "公開 API 僅提供目前直播中的房間資料"
+    },
+    "liveState": {
+      "status": "partial",
+      "reason": "依公開直播目錄判斷；不在目錄中的房間視為已離線"
+    },
+    "shareResolve": {
+      "status": "partial",
+      "reason": "支援 OKX stream-room 分享碼；已離線房間只保留基本資料"
+    },
+    "danmaku": {
+      "status": "unavailable",
+      "reason": "OKX Orbit 聊天需官方登入會話，沒有公開彈幕接口"
+    }
+  },
+  "changelog": [
+    "1.0.0：加入 OKX Orbit 公開直播目錄、搜尋、狀態檢查與 stream-room 分享連結解析；原生播放等待穩定公開接口"
+  ],
+  "shareResolve": {
+    "hosts": [
+      "okx.com"
+    ],
+    "keywords": [
+      "okx",
+      "orbit",
+      "livestream",
+      "shareCode"
+    ]
+  },
+  "hostBehavior": {
+    "externalRoomURLTemplate": "https://www.okx.com/livestream/stream-room?shareCode={roomId}",
+    "themeColor": "#111111",
+    "playableLiveStates": []
+  }
+}
