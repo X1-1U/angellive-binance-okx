@@ -78,9 +78,19 @@ function assertRoom(room, expectedType) {
 
 const binanceList = await fixture("binance-live-list.json");
 const binanceDetail = await fixture("binance-room-detail.json");
+const binanceChat = await fixture("binance-chat.json");
 const binance = await loadPlugin("binance", async (input) => {
   const url = input.request.url;
-  if (url.includes("audio-live-recommend/list")) return binanceList;
+  if (url.includes("feed/live/list")) {
+    const body = JSON.parse(input.request.body);
+    return body.pageIndex === 1
+      ? binanceList
+      : { code: "000000", success: true, data: { vos: [] } };
+  }
+  if (url.includes("feed-recommend/list")) return binanceList;
+  if (url.includes("audio-live-recommend/list")) {
+    return { code: "000000", success: true, data: { spaceLiveList: [] } };
+  }
   if (url.includes("room-detail")) return binanceDetail;
   throw new Error(`Unexpected Binance URL: ${url}`);
 });
@@ -102,11 +112,49 @@ assert.equal((await binance.plugin.getLiveState({ roomId: "39715484101961" })).l
 assert.equal(binance.requests[0].platformId, "binance");
 assert.equal(binance.requests[0].authMode, "none");
 assert.equal(binance.requests[0].request.headers.clienttype, "web");
+assert.equal(binance.requests[0].request.headers.versioncode, "web");
+assert.deepEqual(JSON.parse(binance.requests[0].request.body), { pageIndex: 1, pageSize: 20 });
+assert.equal(binance.requests.some((item) => item.request.url.includes("feed-recommend/list")), false);
+const binanceDanmaku = await binance.plugin.getDanmaku({ roomId: "49990000123456" });
+assert.equal(binanceDanmaku.transport.kind, "http_polling");
+assert.equal(binanceDanmaku.runtime.driver, "plugin_js_v1");
+const danmakuSession = await binance.plugin.createDanmakuSession({
+  connectionId: "fixture-connection",
+  roomId: "49990000123456",
+  args: binanceDanmaku.args
+});
+assert.equal(danmakuSession.timer.mode, "polling");
+const firstDanmakuFrame = await binance.plugin.onDanmakuFrame({
+  connectionId: "fixture-connection",
+  frameType: "http_response",
+  statusCode: 200,
+  text: JSON.stringify(binanceChat)
+});
+assert.equal(firstDanmakuFrame.messages.length, 2);
+assert.equal(firstDanmakuFrame.messages[0].nickname, "觀眾甲");
+const duplicateDanmakuFrame = await binance.plugin.onDanmakuFrame({
+  connectionId: "fixture-connection",
+  frameType: "http_response",
+  statusCode: 200,
+  text: JSON.stringify(binanceChat)
+});
+assert.equal(duplicateDanmakuFrame.messages.length, 0);
+assert.equal((await binance.plugin.destroyDanmakuSession({ connectionId: "fixture-connection" })).ok, true);
 
 const okxList = await fixture("okx-live-list.json");
+const okxToken = await fixture("okx-anonymous-token.json");
+const okxStatus = await fixture("okx-live-status.json");
+const okxPlaybackInfo = await fixture("okx-playback-info.json");
+const okxNewest = await fixture("okx-danmaku-newest.json");
+const okxHistory = await fixture("okx-danmaku-history.json");
+const okxPush = await fixture("okx-danmaku-push.json");
 const okx = await loadPlugin("okx", async (input) => {
-  assert.match(input.request.url, /users-all/);
-  return okxList;
+  const url = input.request.url;
+  if (url.includes("users-all")) return okxList;
+  if (url.includes("anonymous-token")) return okxToken;
+  if (url.includes("/status?")) return okxStatus;
+  if (url.includes("/livestream/v1/info?")) return okxPlaybackInfo;
+  throw new Error(`Unexpected OKX URL: ${url}`);
 });
 assert.equal(okx.plugin.apiVersion, 1);
 assert.equal((await okx.plugin.getCategories({}))[0].subList[0].id, "all");
@@ -120,9 +168,61 @@ const okxResolved = await okx.plugin.resolveShare({
 });
 assertRoom(okxResolved, "okx");
 assert.equal((await okx.plugin.getLiveState({ roomId: "fixtureShareCode-1" })).liveState, "1");
-await assert.rejects(
-  () => okx.plugin.getPlayback({ roomId: "fixtureShareCode-1" }),
-  (error) => error.code === "UNSUPPORTED" && /authenticated official Stream Room/.test(error.message)
+const okxPlayback = await okx.plugin.getPlayback({ roomId: "fixtureShareCode-1" });
+assert.equal(okxPlayback.length, 2);
+assert.equal(okxPlayback[0].qualitys[0].liveCodeType, "m3u8");
+assert.equal(okxPlayback[0].qualitys.some((item) => item.liveCodeType === "flv"), true);
+const okxInfoRequest = okx.requests.find((item) => item.request.url.includes("/livestream/v1/info?"));
+assert.equal(okxInfoRequest.request.headers.Platform, "web");
+assert.equal(okxInfoRequest.request.headers["im-token"], "fixture-im-token");
+const okxDanmaku = await okx.plugin.getDanmaku({ roomId: "fixtureShareCode-1" });
+assert.equal(okxDanmaku.transport.kind, "websocket");
+assert.equal(okxDanmaku.transport.frameType, "text");
+assert.equal(okxDanmaku.headers["im-token"], "fixture-im-token");
+const okxDanmakuSession = await okx.plugin.createDanmakuSession({
+  connectionId: "okx-fixture-connection",
+  roomId: "fixtureShareCode-1",
+  args: okxDanmaku.args
+});
+assert.equal(okxDanmakuSession.ok, true);
+const okxOpen = await okx.plugin.onDanmakuOpen({ connectionId: "okx-fixture-connection" });
+assert.equal(
+  Array.from(okxOpen.writes, (item) => JSON.parse(item.text).websocketCommand).join(","),
+  "WSSubscribeToLivestream,WSGetNewestSeq"
+);
+const newestFrame = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify(okxNewest)
+});
+assert.equal(JSON.parse(newestFrame.writes[0].text).websocketCommand, "WSGetMsgByPage");
+const historyFrame = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify(okxHistory)
+});
+assert.equal(historyFrame.messages.length, 2);
+assert.equal(historyFrame.messages[0].nickname, "OKX 觀眾甲");
+const pushFrame = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify(okxPush)
+});
+assert.equal(pushFrame.messages.length, 1);
+assert.equal(pushFrame.messages[0].text, "即時訊息");
+const duplicatePush = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify(okxPush)
+});
+assert.equal(duplicatePush.messages.length, 0);
+assert.equal(
+  JSON.parse((await okx.plugin.onDanmakuTick({ connectionId: "okx-fixture-connection" })).writes[0].text).websocketCommand,
+  "WSPing"
+);
+assert.equal(
+  (await okx.plugin.destroyDanmakuSession({ connectionId: "okx-fixture-connection" })).ok,
+  true
 );
 assert.equal(okx.requests[0].platformId, "okx");
 assert.equal(okx.requests[0].authMode, "none");

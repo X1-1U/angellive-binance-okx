@@ -1,0 +1,33 @@
+{
+  "websocketCommand": "WSGetMsgByPage",
+  "code": 0,
+  "data": {
+    "channelId": "fixture-channel-1",
+    "messageList": [
+      {
+        "channelId": "fixture-channel-1",
+        "seq": 101,
+        "messageContentType": 100,
+        "contentType": 101,
+        "textMessage": {
+          "text": "歷史訊息一"
+        },
+        "senderName": {
+          "nickname": "OKX 觀眾甲"
+        }
+      },
+      {
+        "channelId": "fixture-channel-1",
+        "seq": 102,
+        "messageContentType": 100,
+        "contentType": 101,
+        "textMessage": {
+          "text": "歷史訊息二"
+        },
+        "senderName": {
+          "nickname": "OKX 觀眾乙"
+        }
+      }
+    ]
+  }
+}

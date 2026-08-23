@@ -1,0 +1,36 @@
+{
+  "code": "0",
+  "data": {
+    "status": 1,
+    "pullUrlListV2": [
+      {
+        "quality": "auto",
+        "url": "https://okx-cdn-a.example/live/fixture.m3u8",
+        "protocol": "hls"
+      },
+      {
+        "quality": "hd",
+        "url": "https://okx-cdn-a.example/live/fixture-hd.m3u8",
+        "protocol": "hls"
+      },
+      {
+        "quality": "hd",
+        "url": "https://okx-cdn-a.example/live/fixture-hd.flv",
+        "protocol": "flv"
+      },
+      {
+        "quality": "auto",
+        "url": "https://okx-cdn-b.example/live/fixture.m3u8",
+        "protocol": "hls"
+      }
+    ],
+    "pullUrlList": [
+      {
+        "quality": "auto",
+        "url": "https://okx-cdn-a.example/live/fixture.m3u8",
+        "protocol": "hls"
+      }
+    ]
+  },
+  "msg": ""
+}

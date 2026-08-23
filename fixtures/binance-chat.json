@@ -1,0 +1,23 @@
+{
+  "code": "000000",
+  "message": "ok",
+  "success": true,
+  "data": {
+    "liveRoomChatMessage": [
+      {
+        "content": "第一條測試彈幕",
+        "displayName": "觀眾甲",
+        "username": "viewer-a",
+        "squareUid": "viewer-a-uid",
+        "seqId": 101
+      },
+      {
+        "content": "第二條測試彈幕",
+        "displayName": "觀眾乙",
+        "username": "viewer-b",
+        "squareUid": "viewer-b-uid",
+        "seqId": 102
+      }
+    ]
+  }
+}

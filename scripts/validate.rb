@@ -49,6 +49,12 @@ PLUGINS.each do |plugin_id|
     %w[getCategories getRooms getPlayback search getRoomDetail getLiveState resolveShare].each do |method|
       errors << "#{entry}: missing #{method}" unless source.match?(/async\s+#{method}\s*\(/)
     end
+    danmaku_status = manifest.dig("capabilities", "danmaku", "status")
+    if %w[available partial].include?(danmaku_status)
+      %w[getDanmaku createDanmakuSession onDanmakuOpen onDanmakuTick onDanmakuFrame destroyDanmakuSession].each do |method|
+        errors << "#{entry}: danmaku capability requires #{method}" unless source.match?(/async\s+#{method}\s*\(/)
+      end
+    end
   end
 
   ICON_SIZES.each do |kind, expected|

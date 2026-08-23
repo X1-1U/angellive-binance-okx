@@ -1,0 +1,29 @@
+{
+  "websocketCommand": "WSPushMsg",
+  "code": 0,
+  "data": {
+    "messageList": [
+      {
+        "channelId": "fixture-channel-1",
+        "seq": 103,
+        "messageContentType": 100,
+        "contentType": 101,
+        "textMessage": {
+          "text": "即時訊息"
+        },
+        "senderName": {
+          "nickname": "OKX 觀眾丙"
+        }
+      },
+      {
+        "channelId": "fixture-channel-1",
+        "seq": 104,
+        "customMessage": {
+          "serviceName": "LiveStream",
+          "bizName": "GeneralInsights",
+          "content": "{\"currentViews\":\"42\",\"totalViews\":\"100\"}"
+        }
+      }
+    ]
+  }
+}

@@ -29,12 +29,12 @@ angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1
 |---|---|---|
 | 直播目錄 | 支援 | 支援 |
 | 房間搜尋 | 目前直播；URL／內容 ID | 目前直播；分享碼／URL |
-| 房間詳情與狀態 | 支援 | 目前直播支援；離線僅保留基本資料 |
-| AngelLive 原生播放 | HLS／FLV 直播、HLS 回放 | 暫不支援 |
+| 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
+| AngelLive 原生播放 | HLS／FLV 直播、HLS 回放 | HLS／FLV、多畫質、雙 CDN |
 | 分享連結解析 | 支援 Square audio、replay、audiospace、uni-qr | 支援 stream-room `shareCode` |
-| 彈幕／聊天 | 暫不支援 | 暫不支援 |
+| 彈幕／聊天 | 公開聊天室每 3 秒更新 | 匿名 WebSocket 即時聊天及最近歷史 |
 
-OKX 的公開 API 可以列出直播，但官方 Stream Room 目前要求登入，媒體 URL 由登入後接口動態取得；因此本版本不會把官方網頁 URL 偽裝成可播放的 HLS URL。這項限制已在 manifest 的 capability 中標為 `unavailable`。
+OKX 的官方直播狀態、聊天與 Web 平台播放資訊都可以透過臨時匿名 token 讀取。本插件只把實際 HLS／FLV 媒體地址交給 AngelLive，不會把官方網頁 URL 偽裝成直播串流。
 
 ## 目錄
 
@@ -67,8 +67,8 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.0.0.zip
-dist/okx-1.0.0.zip
+dist/binance-1.1.0.zip
+dist/okx-1.1.0.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json
@@ -96,7 +96,7 @@ AngelLive 的 source index 和 ZIP 都必須放在可直接下載的穩定 HTTPS
 ## 技術與風險說明
 
 - Binance 插件使用 Binance Square 現行網頁所用的公開 `/bapi/square` 與 `/bapi/composite` 接口；不需要 API key、交易權限或帳戶 cookie。
-- OKX 插件使用 Orbit 網頁的公開直播目錄 `/priapi/v5/content/public/livestream/users-all`；不讀取或儲存 OKX 登入 cookie。
+- OKX 插件使用 Orbit 網頁的公開直播目錄，並透過臨時匿名 token 讀取 HLS／FLV、房間狀態與即時聊天；不讀取或儲存 OKX 登入 cookie。
 - 這些是平台前端使用、但未承諾穩定性的接口，平台改版、地區限制、限流或 WAF 都可能令插件需要更新。
 - 兩個插件只讀取直播內容，不執行下單、轉帳或任何帳戶操作。
 - Binance、OKX 及其標誌是各自權利人的商標；本專案是非官方社群整合。

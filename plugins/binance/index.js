@@ -4,6 +4,16 @@ const _bn_baseURL = "https://www.binance.com";
 const _bn_ua =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 const _bn_pageSize = 20;
+const _bn_liveDirectoryScanPages = 5;
+const _bn_feedScanPages = 10;
+const _bn_roomPageSize = 50;
+const _bn_cacheTTL = 30 * 1000;
+const _bn_danmakuIntervalMs = 3000;
+const _bn_runtime = {
+  liveList: [],
+  liveListFetchedAt: 0,
+  danmakuSessions: {}
+};
 
 function _bn_throw(code, message, context) {
   if (globalThis.Host && typeof Host.raise === "function") {
@@ -54,7 +64,7 @@ function _bn_message(data) {
 
 async function _bn_http(request) {
   if (!globalThis.Host || !Host.http || typeof Host.http.request !== "function") {
-    _bn_throw("RUNTIME", "Host.http.request is unavailable", {});
+    _bn_throw("UNKNOWN", "Host.http.request is unavailable", {});
   }
 
   const req = _bn_object(request);
@@ -82,7 +92,8 @@ async function _bn_http(request) {
 
   const status = _bn_num(response && response.status, 0);
   if (status < 200 || status >= 300) {
-    _bn_throw("HTTP", `Binance HTTP ${status || "error"}`, {
+    const code = status === 429 ? "RATE_LIMITED" : status === 401 || status === 403 ? "BLOCKED" : "NETWORK";
+    _bn_throw(code, `Binance HTTP ${status || "error"}`, {
       status: status,
       url: _bn_str(response && response.url) || _bn_str(req.url)
     });
@@ -101,7 +112,7 @@ async function _bn_requestJSON(request) {
 
   const code = _bn_str(parsed.code);
   if (parsed.success === false || (code && code !== "000000" && code !== "0")) {
-    _bn_throw("API", _bn_message(parsed), { code: code });
+    _bn_throw(code === "000429" ? "RATE_LIMITED" : "UPSTREAM", _bn_message(parsed), { code: code });
   }
   return parsed;
 }
@@ -144,6 +155,13 @@ function _bn_pickId(item) {
 function _bn_pickAuthor(item) {
   const object = _bn_object(item);
   return _bn_object(object.userInfo || object.contentAuthor || object.author || object.hostInfo);
+}
+
+function _bn_liveCard(item) {
+  const object = _bn_object(item);
+  const cardType = _bn_str(object.cardType).toUpperCase();
+  if (cardType && cardType.indexOf("SPACE_LIVE") !== 0) return false;
+  return _bn_liveState(object, false) === "1";
 }
 
 function _bn_pickReplayURL(item) {
@@ -206,10 +224,18 @@ function _bn_room(item, forceLive) {
     userName: userName,
     roomTitle: _bn_str(value.title || value.liveTitle || value.roomTitle || "Binance Square Live"),
     roomCover: _bn_str(value.cover || value.coverUrl || value.thumbnail || value.roomCover),
-    userHeadImg: _bn_str(author.avatar || author.portrait || value.avatar || value.userHeadImg),
+    userHeadImg: _bn_str(
+      author.avatar || author.portrait || value.authorAvatar || value.avatar || value.userHeadImg
+    ),
     liveType: _bn_liveType,
     liveState: _bn_liveState(value, forceLive),
-    userId: _bn_str(author.squareUid || author.userId || value.squareUid || value.userId),
+    userId: _bn_str(
+      author.squareUid ||
+        author.userId ||
+        value.squareAuthorId ||
+        value.squareUid ||
+        value.userId
+    ),
     roomId: roomId,
     liveWatchedCount: _bn_str(
       value.onlineCount || value.viewCount || value.viewerCount || value.liveWatchedCount || 0
@@ -218,7 +244,7 @@ function _bn_room(item, forceLive) {
   };
 }
 
-async function _bn_fetchLiveList() {
+async function _bn_fetchLegacyLiveList() {
   const result = await _bn_requestJSON({
     url: `${_bn_baseURL}/bapi/composite/v1/friendly/pgc/feed/audio-live-recommend/list`,
     method: "POST",
@@ -228,6 +254,160 @@ async function _bn_fetchLiveList() {
   const data = _bn_object(result.data);
   const list = data.spaceLiveList || data.liveList || data.list || [];
   return Array.isArray(list) ? list : [];
+}
+
+async function _bn_fetchLiveDirectoryPage(pageIndex) {
+  const result = await _bn_requestJSON({
+    url: `${_bn_baseURL}/bapi/composite/v1/friendly/pgc/feed/live/list`,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      versioncode: "web"
+    },
+    body: JSON.stringify({
+      pageIndex: Math.max(1, _bn_num(pageIndex, 1)),
+      pageSize: _bn_pageSize
+    })
+  });
+  const data = _bn_object(result.data);
+  const list = data.vos || data.list || [];
+  return Array.isArray(list) ? list : [];
+}
+
+async function _bn_fetchFeedPage(pageIndex, contentIds) {
+  const result = await _bn_requestJSON({
+    url: `${_bn_baseURL}/bapi/composite/v9/friendly/pgc/feed/feed-recommend/list`,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      versioncode: "web"
+    },
+    body: JSON.stringify({
+      pageIndex: Math.max(1, _bn_num(pageIndex, 1)),
+      pageSize: _bn_pageSize,
+      scene: "web-homepage",
+      contentIds: Array.isArray(contentIds) ? contentIds.slice(-50) : []
+    })
+  });
+  const data = _bn_object(result.data);
+  const list = data.vos || data.list || [];
+  return Array.isArray(list) ? list : [];
+}
+
+function _bn_dedupeLiveList(items) {
+  const seen = {};
+  const output = [];
+  for (const item of items) {
+    if (!_bn_liveCard(item)) continue;
+    const id = _bn_pickId(item);
+    if (!id || seen[id]) continue;
+    seen[id] = true;
+    output.push(item);
+  }
+  output.sort(function (left, right) {
+    return _bn_num(right.onlineCount || right.viewCount, 0) - _bn_num(left.onlineCount || left.viewCount, 0);
+  });
+  return output;
+}
+
+async function _bn_fetchRecommendedLiveList() {
+  const collected = [];
+  const feedHistory = [];
+  const feedSeen = {};
+  let successCount = 0;
+  let firstError = null;
+  let stalePages = 0;
+
+  for (let page = 1; page <= _bn_feedScanPages; page += 1) {
+    let items = [];
+    try {
+      const recentIds = feedHistory.slice(-50).map(function (item) {
+        return _bn_pickId(item);
+      }).filter(function (id) {
+        return !!id;
+      });
+      items = await _bn_fetchFeedPage(page, recentIds);
+      successCount += 1;
+    } catch (error) {
+      if (!firstError) firstError = error;
+      stalePages += 1;
+      if (stalePages >= 3) break;
+      continue;
+    }
+    if (!items.length) {
+      stalePages += 1;
+      if (stalePages >= 3) break;
+      continue;
+    }
+    collected.push.apply(collected, items);
+    let newIds = 0;
+    for (const item of items) {
+      const id = _bn_pickId(item);
+      if (!id || feedSeen[id]) continue;
+      feedSeen[id] = true;
+      feedHistory.push(item);
+      newIds += 1;
+    }
+    stalePages = newIds > 0 ? 0 : stalePages + 1;
+    if (stalePages >= 3) break;
+  }
+
+  if (successCount === 0 && firstError) throw firstError;
+  return collected;
+}
+
+async function _bn_fetchLiveList() {
+  if (
+    _bn_runtime.liveListFetchedAt > 0 &&
+    Date.now() - _bn_runtime.liveListFetchedAt < _bn_cacheTTL
+  ) {
+    return _bn_runtime.liveList.slice();
+  }
+
+  const collected = [];
+  let directorySucceeded = false;
+  let directoryError = null;
+  let emptyLivePages = 0;
+
+  // Binance Square 的專用直播目錄會把直播卡排在最前面；連續兩個空頁才停止，以避開短暫快取抖動。
+  for (let page = 1; page <= _bn_liveDirectoryScanPages; page += 1) {
+    try {
+      const items = await _bn_fetchLiveDirectoryPage(page);
+      directorySucceeded = true;
+      collected.push.apply(collected, items);
+      if (items.some(function (item) { return _bn_liveCard(item); })) {
+        emptyLivePages = 0;
+      } else {
+        emptyLivePages += 1;
+        if (emptyLivePages >= 2) break;
+      }
+    } catch (error) {
+      directoryError = directoryError || error;
+      break;
+    }
+  }
+
+  let liveList = _bn_dedupeLiveList(collected);
+
+  // 推薦流不是完整目錄，只在專用目錄失效或暫時回空時作後備。
+  if (!liveList.length) {
+    try {
+      const recommended = await _bn_fetchRecommendedLiveList();
+      collected.push.apply(collected, recommended);
+    } catch (error) {
+      if (!directorySucceeded && directoryError) throw directoryError;
+      if (!directorySucceeded) throw error;
+    }
+    try {
+      const legacy = await _bn_fetchLegacyLiveList();
+      collected.push.apply(collected, legacy);
+    } catch (_) {}
+    liveList = _bn_dedupeLiveList(collected);
+  }
+
+  _bn_runtime.liveList = liveList.slice();
+  _bn_runtime.liveListFetchedAt = Date.now();
+  return liveList;
 }
 
 async function _bn_fetchRoomDetail(roomId) {
@@ -253,10 +433,23 @@ async function _bn_fetchContentDetail(contentId) {
 }
 
 async function _bn_detailWithFallback(roomId) {
+  const id = _bn_parseRoomId(roomId);
+  let cached = null;
+  for (const item of _bn_runtime.liveList) {
+    if (_bn_pickId(item) === id) {
+      cached = item;
+      break;
+    }
+  }
   try {
-    return await _bn_fetchRoomDetail(roomId);
-  } catch (error) {
-    return await _bn_fetchContentDetail(_bn_parseRoomId(roomId));
+    return Object.assign({}, cached || {}, await _bn_fetchRoomDetail(id));
+  } catch (_) {
+    try {
+      return Object.assign({}, cached || {}, await _bn_fetchContentDetail(id));
+    } catch (error) {
+      if (cached) return cached;
+      throw error;
+    }
   }
 }
 
@@ -293,6 +486,84 @@ function _bn_addQuality(list, seen, url, title, qn, format, isLive, roomId) {
   const item = _bn_quality(normalized, title, qn, format, isLive);
   item.roomId = _bn_str(roomId);
   list.push(item);
+}
+
+function _bn_chatURL(roomId) {
+  return `${_bn_baseURL}/bapi/square/v1/friendly/square-live/get-live-room-chat-message?contentId=${encodeURIComponent(roomId)}&withAffinityCoin=true`;
+}
+
+function _bn_chatHeaders(roomId) {
+  return {
+    Accept: "application/json, text/plain, */*",
+    clienttype: "web",
+    lang: "en",
+    Referer: `${_bn_baseURL}/en/square/audio?id=${encodeURIComponent(roomId)}`
+  };
+}
+
+function _bn_chatPoll(roomId) {
+  return {
+    url: _bn_chatURL(roomId),
+    method: "GET",
+    headers: _bn_chatHeaders(roomId)
+  };
+}
+
+function _bn_danmakuSession(payload) {
+  const runtimePayload = _bn_payload(payload);
+  return _bn_runtime.danmakuSessions[_bn_str(runtimePayload.connectionId)] || null;
+}
+
+function _bn_chatMessages(session, response) {
+  const parsed = _bn_parseJSON(response);
+  if (!parsed || typeof parsed !== "object") {
+    _bn_throw("INVALID_RESPONSE", "Binance chat returned invalid JSON", {});
+  }
+  if (parsed.success === false || (_bn_str(parsed.code) && _bn_str(parsed.code) !== "000000")) {
+    _bn_throw("UPSTREAM", _bn_message(parsed), { code: _bn_str(parsed.code) });
+  }
+
+  const data = _bn_object(parsed.data);
+  const list = Array.isArray(data.liveRoomChatMessage) ? data.liveRoomChatMessage.slice() : [];
+  list.sort(function (left, right) {
+    return _bn_num(left.seqId, 0) - _bn_num(right.seqId, 0);
+  });
+
+  const firstFrame = !session.initialized;
+  const startIndex = firstFrame ? Math.max(0, list.length - 20) : 0;
+  const messages = [];
+  let maxSeq = session.lastSeq;
+
+  for (let index = 0; index < list.length; index += 1) {
+    const item = _bn_object(list[index]);
+    const seq = _bn_num(item.seqId, 0);
+    const key = seq > 0
+      ? _bn_str(seq)
+      : [_bn_str(item.squareUid), _bn_str(item.content), _bn_str(index)].join(":");
+    if (seq > maxSeq) maxSeq = seq;
+    if (index < startIndex || session.seen[key] || (!firstFrame && seq > 0 && seq <= session.lastSeq)) {
+      continue;
+    }
+    const text = _bn_str(item.translatedContent || item.content).trim();
+    if (!text) continue;
+    session.seen[key] = true;
+    messages.push({
+      text: text,
+      nickname: _bn_str(item.displayName || item.username || "Binance User")
+    });
+  }
+
+  session.initialized = true;
+  session.lastSeq = maxSeq;
+  const keys = Object.keys(session.seen);
+  if (keys.length > 500) {
+    const keep = {};
+    for (let index = Math.max(0, keys.length - 300); index < keys.length; index += 1) {
+      keep[keys[index]] = true;
+    }
+    session.seen = keep;
+  }
+  return messages;
 }
 
 async function _bn_resolveRoomFromShare(shareCode) {
@@ -349,13 +620,14 @@ globalThis.LiveParsePlugin = {
   async getRooms(payload) {
     const runtimePayload = _bn_payload(payload);
     const page = Math.max(1, _bn_num(runtimePayload.page, 1));
-    if (page > 1) return [];
     const list = await _bn_fetchLiveList();
-    return list.map(function (item) {
+    const rooms = list.map(function (item) {
       return _bn_room(item, true);
     }).filter(function (item) {
       return !!item.roomId;
     });
+    const start = (page - 1) * _bn_roomPageSize;
+    return rooms.slice(start, start + _bn_roomPageSize);
   },
 
   async getPlayback(payload) {
@@ -377,7 +649,7 @@ globalThis.LiveParsePlugin = {
       if (/\.m3u8(?:[?#]|$)/i.test(replayURL)) {
         _bn_addQuality(qualities, seen, replayURL, "HLS 回放", 10000, "m3u8", false, roomId);
       } else if (replayURL) {
-        _bn_throw("UNSUPPORTED", "This Binance replay is not available as HLS", {
+        _bn_throw("BLOCKED", "This Binance replay is not available as HLS", {
           roomId: roomId,
           replayURL: replayURL
         });
@@ -385,7 +657,7 @@ globalThis.LiveParsePlugin = {
     }
 
     if (!qualities.length) {
-      _bn_throw("OFFLINE", "This Binance Square live room is offline or has no playable stream", {
+      _bn_throw("NOT_FOUND", "This Binance Square live room is offline or has no playable stream", {
         roomId: roomId,
         liveState: state
       });
@@ -406,14 +678,12 @@ globalThis.LiveParsePlugin = {
     const keyword = _bn_str(runtimePayload.keyword).trim();
     const page = Math.max(1, _bn_num(runtimePayload.page, 1));
     if (!keyword) _bn_throw("INVALID_ARGS", "keyword is required", { field: "keyword" });
-    if (page > 1) return [];
-
     const roomId = _bn_parseRoomId(keyword);
-    if (roomId) return [_bn_room(await _bn_detailWithFallback(roomId), false)];
+    if (roomId) return page === 1 ? [_bn_room(await _bn_detailWithFallback(roomId), false)] : [];
 
     const lower = keyword.toLowerCase();
     const list = await _bn_fetchLiveList();
-    return list.map(function (item) {
+    const matches = list.map(function (item) {
       return _bn_room(item, true);
     }).filter(function (item) {
       return (
@@ -421,6 +691,8 @@ globalThis.LiveParsePlugin = {
         item.userName.toLowerCase().indexOf(lower) >= 0
       );
     });
+    const start = (page - 1) * _bn_roomPageSize;
+    return matches.slice(start, start + _bn_roomPageSize);
   },
 
   async getRoomDetail(payload) {
@@ -443,5 +715,90 @@ globalThis.LiveParsePlugin = {
     const shareCode = _bn_str(runtimePayload.shareCode).trim();
     if (!shareCode) _bn_throw("INVALID_ARGS", "shareCode is required", { field: "shareCode" });
     return _bn_room(await _bn_resolveRoomFromShare(shareCode), false);
+  },
+
+  async getDanmaku(payload) {
+    const runtimePayload = _bn_payload(payload);
+    const roomId = _bn_parseRoomId(runtimePayload.roomId || runtimePayload.userId);
+    if (!roomId) _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+    return {
+      args: {
+        roomId: roomId,
+        _danmu_type: "http_polling"
+      },
+      headers: _bn_chatHeaders(roomId),
+      transport: {
+        kind: "http_polling",
+        url: _bn_chatURL(roomId),
+        polling: {
+          method: "GET",
+          intervalMs: _bn_danmakuIntervalMs,
+          sendOnConnect: true
+        }
+      },
+      runtime: {
+        driver: "plugin_js_v1",
+        protocolId: "binance_square_chat_polling",
+        protocolVersion: "1"
+      }
+    };
+  },
+
+  async createDanmakuSession(payload) {
+    const runtimePayload = _bn_payload(payload);
+    const connectionId = _bn_str(runtimePayload.connectionId);
+    const args = _bn_object(runtimePayload.args);
+    const roomId = _bn_parseRoomId(runtimePayload.roomId || args.roomId);
+    if (!connectionId || !roomId) {
+      _bn_throw("INVALID_ARGS", "connectionId and roomId are required", {});
+    }
+    _bn_runtime.danmakuSessions[connectionId] = {
+      roomId: roomId,
+      initialized: false,
+      lastSeq: 0,
+      seen: {}
+    };
+    return {
+      ok: true,
+      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs },
+      poll: _bn_chatPoll(roomId)
+    };
+  },
+
+  async onDanmakuOpen(payload) {
+    const session = _bn_danmakuSession(payload);
+    return session ? { ok: true } : { ok: false };
+  },
+
+  async onDanmakuTick(payload) {
+    const session = _bn_danmakuSession(payload);
+    if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
+    return { ok: true, poll: _bn_chatPoll(session.roomId) };
+  },
+
+  async onDanmakuFrame(payload) {
+    const runtimePayload = _bn_payload(payload);
+    const session = _bn_danmakuSession(runtimePayload);
+    if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
+    if (_bn_str(runtimePayload.frameType) !== "http_response") {
+      return { ok: true, messages: [] };
+    }
+    const status = _bn_num(runtimePayload.statusCode, 200);
+    if (status < 200 || status >= 300) {
+      _bn_throw(status === 429 ? "RATE_LIMITED" : "UPSTREAM", `Binance chat HTTP ${status}`, {
+        status: status
+      });
+    }
+    return {
+      ok: true,
+      messages: _bn_chatMessages(session, runtimePayload.text)
+    };
+  },
+
+  async destroyDanmakuSession(payload) {
+    const runtimePayload = _bn_payload(payload);
+    const connectionId = _bn_str(runtimePayload.connectionId);
+    if (connectionId) delete _bn_runtime.danmakuSessions[connectionId];
+    return { ok: true };
   }
 };

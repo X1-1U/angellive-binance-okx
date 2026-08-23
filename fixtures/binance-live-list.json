@@ -3,18 +3,22 @@
   "message": "ok",
   "success": true,
   "data": {
-    "spaceLiveList": [
+    "vos": [
       {
-        "contentId": 49990000123456,
+        "id": "49990000123456",
+        "cardType": "SPACE_LIVE",
+        "contentType": 4,
         "liveStatus": 1,
-        "liveType": 3,
+        "liveType": 5,
         "title": "Binance Square 測試直播",
         "cover": "https://public.bnbstatic.com/example/live-cover.png",
         "onlineCount": 321,
-        "userInfo": {
-          "squareUid": "fixture-square-uid",
-          "displayName": "Binance 主播",
-          "avatar": "https://public.bnbstatic.com/example/avatar.png"
+        "squareAuthorId": "fixture-square-uid",
+        "authorName": "Binance 主播",
+        "authorAvatar": "https://public.bnbstatic.com/example/avatar.png",
+        "livePullUrls": {
+          "flvPlayUrl": "https://bnliveplay-ag.bblivestream.com/live/square_49990000123456.flv",
+          "hlsPlayUrl": "https://bnliveplay-ag.bblivestream.com/live/square_49990000123456.m3u8"
         }
       }
     ]

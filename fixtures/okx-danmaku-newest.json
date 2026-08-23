@@ -1,0 +1,12 @@
+{
+  "websocketCommand": "WSGetNewestSeq",
+  "code": 0,
+  "data": {
+    "seqDtoList": [
+      {
+        "channelId": "fixture-channel-1",
+        "seq": 102
+      }
+    ]
+  }
+}
