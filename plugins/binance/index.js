@@ -560,6 +560,15 @@ function _bn_chatPoll(roomId) {
   };
 }
 
+async function _bn_fetchChatMessages(session) {
+  const parsed = await _bn_requestJSON({
+    url: `${_bn_chatURL(session.roomId)}&_=${Date.now()}`,
+    method: "GET",
+    headers: _bn_chatHeaders(session.roomId)
+  });
+  return _bn_chatMessages(session, JSON.stringify(parsed));
+}
+
 function _bn_danmakuSession(payload) {
   const runtimePayload = _bn_payload(payload);
   return _bn_runtime.danmakuSessions[_bn_str(runtimePayload.connectionId)] || null;
@@ -801,7 +810,7 @@ globalThis.LiveParsePlugin = {
         polling: {
           method: "GET",
           intervalMs: _bn_danmakuIntervalMs,
-          sendOnConnect: true
+          sendOnConnect: false
         }
       },
       runtime: {
@@ -820,15 +829,16 @@ globalThis.LiveParsePlugin = {
     if (!connectionId || !roomId) {
       _bn_throw("INVALID_ARGS", "connectionId and roomId are required", {});
     }
-    _bn_runtime.danmakuSessions[connectionId] = {
+    const session = {
       roomId: roomId,
       initialized: false,
       seen: {}
     };
+    _bn_runtime.danmakuSessions[connectionId] = session;
     return {
       ok: true,
       timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs },
-      poll: _bn_chatPoll(roomId)
+      messages: await _bn_fetchChatMessages(session)
     };
   },
 
@@ -840,7 +850,11 @@ globalThis.LiveParsePlugin = {
   async onDanmakuTick(payload) {
     const session = _bn_danmakuSession(payload);
     if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
-    return { ok: true, poll: _bn_chatPoll(session.roomId) };
+    return {
+      ok: true,
+      messages: await _bn_fetchChatMessages(session),
+      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs }
+    };
   },
 
   async onDanmakuFrame(payload) {

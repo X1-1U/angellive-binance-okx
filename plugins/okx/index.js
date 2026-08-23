@@ -511,6 +511,18 @@ function _ok_trimSeen(session) {
   session.seen = keep;
 }
 
+function _ok_seqGreater(left, right) {
+  const leftText = _ok_str(left);
+  const rightText = _ok_str(right);
+  if (!leftText) return false;
+  if (!rightText) return true;
+  if (/^\d+$/.test(leftText) && /^\d+$/.test(rightText)) {
+    if (leftText.length !== rightText.length) return leftText.length > rightText.length;
+    return leftText > rightText;
+  }
+  return leftText > rightText;
+}
+
 function _ok_danmakuMessages(session, list, isHistory) {
   const source = Array.isArray(list) ? list.slice() : [];
   source.sort(function (left, right) {
@@ -521,10 +533,11 @@ function _ok_danmakuMessages(session, list, isHistory) {
 
   for (let index = start; index < source.length; index += 1) {
     const item = _ok_object(source[index]);
+    const seq = _ok_str(item.seq);
+    if (_ok_seqGreater(seq, session.lastSeq)) session.lastSeq = seq;
     const textMessage = _ok_object(item.textMessage);
     const text = _ok_str(textMessage.text || item.text).trim();
     if (!text) continue;
-    const seq = _ok_str(item.seq);
     const key = seq
       ? `${_ok_str(item.channelId || session.channelId)}:${seq}`
       : _ok_str(item.clientMsgId || item.serverMsgId || `${text}:${index}`);
@@ -558,12 +571,14 @@ function _ok_parseDanmakuFrame(session, text) {
   }
 
   const seqList = Array.isArray(data.seqDtoList) ? data.seqDtoList : [];
-  if (seqList.length && !session.historyRequested) {
+  if (seqList.length && !session.historyInFlight) {
     for (const entry of seqList) {
-      const sequence = _ok_num(entry && entry.seq, 0);
+      const sequence = _ok_str(entry && entry.seq);
       const channelId = _ok_str(entry && entry.channelId);
-      if (channelId !== session.channelId || sequence <= 0) continue;
+      if (channelId !== session.channelId || !sequence) continue;
+      if (session.historyLoaded && !_ok_seqGreater(sequence, session.lastSeq)) continue;
       session.historyRequested = true;
+      session.historyInFlight = true;
       writes.push(
         _ok_textWrite("WSGetMsgByPage", {
           channelId: session.channelId,
@@ -583,6 +598,7 @@ function _ok_parseDanmakuFrame(session, text) {
   }
   if (!list.length && (data.textMessage || data.text || data.customMessage)) list = [data];
   const isHistory = command === "WSGetMsgByPage" || (session.historyRequested && !session.historyLoaded && !!data.channelId);
+  if (command === "WSGetMsgByPage") session.historyInFlight = false;
   if (isHistory && list.length) session.historyLoaded = true;
 
   return {
@@ -766,7 +782,9 @@ globalThis.LiveParsePlugin = {
       authenticated: false,
       seen: {},
       historyRequested: false,
-      historyLoaded: false
+      historyLoaded: false,
+      historyInFlight: false,
+      lastSeq: ""
     };
     return { ok: true };
   },
@@ -786,7 +804,10 @@ globalThis.LiveParsePlugin = {
     if (!session) _ok_throw("INVALID_ARGS", "Unknown danmaku session", {});
     return {
       ok: true,
-      writes: [{ kind: "text", text: "ping" }],
+      writes: [
+        { kind: "text", text: "ping" },
+        _ok_textWrite("WSGetNewestSeq", { channelIdList: [session.channelId] })
+      ],
       timer: { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs }
     };
   },

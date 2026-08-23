@@ -91,6 +91,7 @@ const binance = await loadPlugin("binance", async (input) => {
   if (url.includes("audio-live-recommend/list")) {
     return { code: "000000", success: true, data: { spaceLiveList: [] } };
   }
+  if (url.includes("get-live-room-chat-message")) return binanceChat;
   if (url.includes("room-detail")) return binanceDetail;
   throw new Error(`Unexpected Binance URL: ${url}`);
 });
@@ -124,21 +125,26 @@ const danmakuSession = await binance.plugin.createDanmakuSession({
   args: binanceDanmaku.args
 });
 assert.equal(danmakuSession.timer.mode, "polling");
+assert.equal(danmakuSession.messages.length, 2);
+const nextBinanceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
+  { seqId: 103, content: "第三條測試彈幕", displayName: "觀眾丙" },
+  { seqId: 104, content: "第四條測試彈幕", displayName: "觀眾丁" }
+] } };
 const firstDanmakuFrame = await binance.plugin.onDanmakuFrame({
   connectionId: "fixture-connection",
   frameType: "http_response",
   statusCode: 200,
-  text: JSON.stringify(binanceChat)
+  text: JSON.stringify(nextBinanceChat)
 });
 assert.equal(firstDanmakuFrame.messages.length, 2);
-assert.equal(firstDanmakuFrame.messages[0].nickname, "觀眾甲");
+assert.equal(firstDanmakuFrame.messages[0].nickname, "觀眾丙");
 assert.equal(firstDanmakuFrame.timer.mode, "polling");
 assert.equal(firstDanmakuFrame.timer.intervalMs, 3000);
 const duplicateDanmakuFrame = await binance.plugin.onDanmakuFrame({
   connectionId: "fixture-connection",
   frameType: "http_response",
   statusCode: 200,
-  text: JSON.stringify(binanceChat)
+  text: JSON.stringify(nextBinanceChat)
 });
 assert.equal(duplicateDanmakuFrame.messages.length, 0);
 const largeSequenceFrame = await binance.plugin.onDanmakuFrame({
@@ -151,6 +157,12 @@ const largeSequenceFrame = await binance.plugin.onDanmakuFrame({
   ] } })
 });
 assert.equal(largeSequenceFrame.messages.length, 2);
+const binanceTick = await binance.plugin.onDanmakuTick({ connectionId: "fixture-connection" });
+assert.equal(binanceTick.timer.intervalMs, 3000);
+assert.equal(
+  binance.requests.some((item) => item.request.url.includes("get-live-room-chat-message") && item.request.url.includes("&_=")),
+  true
+);
 assert.equal((await binance.plugin.destroyDanmakuSession({ connectionId: "fixture-connection" })).ok, true);
 
 const okxList = await fixture("okx-live-list.json");
@@ -245,6 +257,14 @@ const singlePushFrame = await okx.plugin.onDanmakuFrame({
   } })
 });
 assert.equal(singlePushFrame.messages[0].text, "單條即時訊息");
+const newestAfterMiss = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify({ websocketCommand: "WSGetNewestSeq", code: 0, data: {
+    seqDtoList: [{ channelId: "fixture-channel-1", seq: "90071992547409924" }]
+  } })
+});
+assert.equal(JSON.parse(newestAfterMiss.writes[0].text).websocketCommand, "WSGetMsgByPage");
 const duplicatePush = await okx.plugin.onDanmakuFrame({
   connectionId: "okx-fixture-connection",
   frameType: "text",

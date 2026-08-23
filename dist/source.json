@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-08-23T16:55:34Z",
+  "generatedAt": "2026-08-23T17:05:51Z",
   "sourceName": "Binance + OKX Live for AngelLive",
   "plugins": [
     {
       "pluginId": "binance",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "platform": "binance",
       "platformName": "Binance Square Live",
       "platformDescription": "Binance Square 公開直播與回放（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.1.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.2.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.1.zip",
-      "sha256": "62191b101c8b28317ff2fa267eb72050bf368c18154ce0c24b2da77dcd7a8823",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.2.zip",
+      "sha256": "5020f3d5ffc27b98dba208511c7c16f4094a20019cee03b6595d4f5c6069e0b8",
       "changelog": [
+        "1.2.2：改由插件定時回調直接請求 Binance 聊天 API，不再依賴 AngelLive 3.0 的二段式 poll 回調",
         "1.2.1：每次聊天回應都重新掛載 3 秒輪詢，兼容會在首幀後清除定時器的 AngelLive 版本",
         "1.2.0：同時合併專用直播目錄、首頁推薦流與舊版入口；保留並校驗最近發現的直播房間；修正大序號去重與輪詢快取造成的後續彈幕缺失",
         "1.1.0：改用 Binance Square 專用直播目錄並依 contentId 去重，推薦流改為故障備援；加入公開聊天室輪詢彈幕",
@@ -66,16 +67,17 @@
     },
     {
       "pluginId": "okx",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.1.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.2.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.1.zip",
-      "sha256": "96d64cbedcd73d84001dc6e520850831091663570eb2c1b8b45ee48f901acff6",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.2.zip",
+      "sha256": "4500bdcd0649f0ded5f47a441b26702de3b0510f9b1232f9b4a9289300d8fe89",
       "changelog": [
+        "1.2.2：除即時推送外每 5 秒校驗聊天室最新序號，漏推時主動補取增量消息，適配 AngelLive 3.0",
         "1.2.1：將匿名 WebSocket 保活縮短為 5 秒，並在每個資料包後重新掛載，修正部分網路週期性 timeout",
         "1.2.0：擴大官方目錄的交叉分頁取樣；保留並校驗分享地址發現的房間；補齊官方 WSAuth、保活與單條推送解析以持續接收彈幕",
         "1.1.0：交叉掃描多組官方目錄分頁並依 shareCode 去重；加入匿名 HLS／FLV 多畫質播放、直播狀態查詢與 WebSocket 即時彈幕",
