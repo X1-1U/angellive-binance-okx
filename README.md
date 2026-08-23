@@ -27,7 +27,7 @@ angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1
 
 | 功能 | Binance Square | OKX Orbit |
 |---|---|---|
-| 直播目錄 | 支援 | 支援 |
+| 直播目錄 | 多入口合併、近期房間狀態校驗 | 多分頁切片取樣、近期房間狀態校驗 |
 | 房間搜尋 | 目前直播；URL／內容 ID | 目前直播；分享碼／URL |
 | 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
 | AngelLive 原生播放 | HLS／FLV 直播、HLS 回放 | HLS／FLV、多畫質、雙 CDN |
@@ -67,8 +67,8 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.1.0.zip
-dist/okx-1.1.0.zip
+dist/binance-1.2.0.zip
+dist/okx-1.2.0.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json

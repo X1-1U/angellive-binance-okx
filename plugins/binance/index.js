@@ -4,14 +4,18 @@ const _bn_baseURL = "https://www.binance.com";
 const _bn_ua =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 const _bn_pageSize = 20;
-const _bn_liveDirectoryScanPages = 5;
+const _bn_liveDirectoryScanPages = 8;
 const _bn_feedScanPages = 10;
 const _bn_roomPageSize = 50;
-const _bn_cacheTTL = 30 * 1000;
+const _bn_cacheTTL = 60 * 1000;
+const _bn_discoveryTTL = 6 * 60 * 60 * 1000;
+const _bn_staleValidationLimit = 20;
 const _bn_danmakuIntervalMs = 3000;
 const _bn_runtime = {
   liveList: [],
   liveListFetchedAt: 0,
+  discovered: {},
+  discoveredAt: {},
   danmakuSessions: {}
 };
 
@@ -310,6 +314,53 @@ function _bn_dedupeLiveList(items) {
   return output;
 }
 
+function _bn_rememberLiveItems(items, seenAt) {
+  const timestamp = seenAt || Date.now();
+  for (const item of items) {
+    if (!_bn_liveCard(item)) continue;
+    const id = _bn_pickId(item);
+    if (!id) continue;
+    _bn_runtime.discovered[id] = item;
+    _bn_runtime.discoveredAt[id] = timestamp;
+  }
+}
+
+async function _bn_revalidateRemembered(currentItems, now) {
+  const currentIds = {};
+  for (const item of currentItems) currentIds[_bn_pickId(item)] = true;
+  const candidates = Object.keys(_bn_runtime.discovered).filter(function (id) {
+    const age = now - _bn_num(_bn_runtime.discoveredAt[id], 0);
+    if (age > _bn_discoveryTTL) {
+      delete _bn_runtime.discovered[id];
+      delete _bn_runtime.discoveredAt[id];
+      return false;
+    }
+    return !currentIds[id];
+  }).slice(0, _bn_staleValidationLimit);
+
+  const checked = await Promise.all(candidates.map(async function (id) {
+    try {
+      const detail = await _bn_fetchRoomDetail(id);
+      return _bn_liveState(detail, false) === "1" ? detail : null;
+    } catch (_) {
+      return null;
+    }
+  }));
+  for (let index = 0; index < candidates.length; index += 1) {
+    const id = candidates[index];
+    const detail = checked[index];
+    if (detail) {
+      _bn_runtime.discovered[id] = detail;
+      _bn_runtime.discoveredAt[id] = now;
+      currentItems.push(detail);
+    } else {
+      delete _bn_runtime.discovered[id];
+      delete _bn_runtime.discoveredAt[id];
+    }
+  }
+  return currentItems;
+}
+
 async function _bn_fetchRecommendedLiveList() {
   const collected = [];
   const feedHistory = [];
@@ -387,23 +438,23 @@ async function _bn_fetchLiveList() {
     }
   }
 
-  let liveList = _bn_dedupeLiveList(collected);
-
-  // 推薦流不是完整目錄，只在專用目錄失效或暫時回空時作後備。
-  if (!liveList.length) {
-    try {
-      const recommended = await _bn_fetchRecommendedLiveList();
-      collected.push.apply(collected, recommended);
-    } catch (error) {
-      if (!directorySucceeded && directoryError) throw directoryError;
-      if (!directorySucceeded) throw error;
-    }
-    try {
-      const legacy = await _bn_fetchLegacyLiveList();
-      collected.push.apply(collected, legacy);
-    } catch (_) {}
-    liveList = _bn_dedupeLiveList(collected);
+  // 專用目錄與首頁推薦流的內容並不完全相同；每輪都合併，避免只看到官方首頁的一小批。
+  try {
+    const recommended = await _bn_fetchRecommendedLiveList();
+    collected.push.apply(collected, recommended);
+  } catch (error) {
+    if (!directorySucceeded && directoryError) throw directoryError;
+    if (!directorySucceeded) throw error;
   }
+  try {
+    const legacy = await _bn_fetchLegacyLiveList();
+    collected.push.apply(collected, legacy);
+  } catch (_) {}
+
+  const now = Date.now();
+  let liveList = _bn_dedupeLiveList(collected);
+  _bn_rememberLiveItems(liveList, now);
+  liveList = _bn_dedupeLiveList(await _bn_revalidateRemembered(liveList, now));
 
   _bn_runtime.liveList = liveList.slice();
   _bn_runtime.liveListFetchedAt = Date.now();
@@ -503,7 +554,7 @@ function _bn_chatHeaders(roomId) {
 
 function _bn_chatPoll(roomId) {
   return {
-    url: _bn_chatURL(roomId),
+    url: `${_bn_chatURL(roomId)}&_=${Date.now()}`,
     method: "GET",
     headers: _bn_chatHeaders(roomId)
   };
@@ -526,22 +577,24 @@ function _bn_chatMessages(session, response) {
   const data = _bn_object(parsed.data);
   const list = Array.isArray(data.liveRoomChatMessage) ? data.liveRoomChatMessage.slice() : [];
   list.sort(function (left, right) {
-    return _bn_num(left.seqId, 0) - _bn_num(right.seqId, 0);
+    const leftSeq = _bn_str(left && left.seqId);
+    const rightSeq = _bn_str(right && right.seqId);
+    if (/^\d+$/.test(leftSeq) && /^\d+$/.test(rightSeq) && leftSeq.length !== rightSeq.length) {
+      return leftSeq.length - rightSeq.length;
+    }
+    return leftSeq < rightSeq ? -1 : leftSeq > rightSeq ? 1 : 0;
   });
 
   const firstFrame = !session.initialized;
   const startIndex = firstFrame ? Math.max(0, list.length - 20) : 0;
   const messages = [];
-  let maxSeq = session.lastSeq;
-
   for (let index = 0; index < list.length; index += 1) {
     const item = _bn_object(list[index]);
-    const seq = _bn_num(item.seqId, 0);
-    const key = seq > 0
-      ? _bn_str(seq)
+    const seq = _bn_str(item.seqId);
+    const key = seq
+      ? seq
       : [_bn_str(item.squareUid), _bn_str(item.content), _bn_str(index)].join(":");
-    if (seq > maxSeq) maxSeq = seq;
-    if (index < startIndex || session.seen[key] || (!firstFrame && seq > 0 && seq <= session.lastSeq)) {
+    if (index < startIndex || session.seen[key]) {
       continue;
     }
     const text = _bn_str(item.translatedContent || item.content).trim();
@@ -554,7 +607,6 @@ function _bn_chatMessages(session, response) {
   }
 
   session.initialized = true;
-  session.lastSeq = maxSeq;
   const keys = Object.keys(session.seen);
   if (keys.length > 500) {
     const keep = {};
@@ -568,14 +620,22 @@ function _bn_chatMessages(session, response) {
 
 async function _bn_resolveRoomFromShare(shareCode) {
   const directId = _bn_parseRoomId(shareCode);
-  if (directId) return await _bn_detailWithFallback(directId);
+  if (directId) {
+    const detail = await _bn_detailWithFallback(directId);
+    _bn_rememberLiveItems([detail]);
+    return detail;
+  }
 
   const postId = _bn_parsePostId(shareCode);
   if (postId) {
     const post = await _bn_fetchContentDetail(postId);
     const quoted = _bn_object(post.quoteContent || post.referencedContent);
     const targetId = _bn_pickId(quoted) || (post.extraFeature === "SPACE_LIVE" ? _bn_pickId(post) : "");
-    if (targetId) return await _bn_detailWithFallback(targetId);
+    if (targetId) {
+      const detail = await _bn_detailWithFallback(targetId);
+      _bn_rememberLiveItems([detail]);
+      return detail;
+    }
   }
 
   const source = _bn_str(shareCode).trim();
@@ -585,10 +645,18 @@ async function _bn_resolveRoomFromShare(shareCode) {
       headers: { Accept: "text/html,application/xhtml+xml" }
     });
     const redirectedId = _bn_parseRoomId(response.url);
-    if (redirectedId) return await _bn_detailWithFallback(redirectedId);
+    if (redirectedId) {
+      const detail = await _bn_detailWithFallback(redirectedId);
+      _bn_rememberLiveItems([detail]);
+      return detail;
+    }
     const html = _bn_str(response.bodyText);
     const match = html.match(/(?:contentId|\"id\")\D{0,24}(\d{6,})/i);
-    if (match && match[1]) return await _bn_detailWithFallback(match[1]);
+    if (match && match[1]) {
+      const detail = await _bn_detailWithFallback(match[1]);
+      _bn_rememberLiveItems([detail]);
+      return detail;
+    }
   }
 
   _bn_throw("PARSE", "Cannot parse this Binance Square live link", { shareCode: source });
@@ -755,7 +823,6 @@ globalThis.LiveParsePlugin = {
     _bn_runtime.danmakuSessions[connectionId] = {
       roomId: roomId,
       initialized: false,
-      lastSeq: 0,
       seen: {}
     };
     return {

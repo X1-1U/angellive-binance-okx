@@ -114,7 +114,7 @@ assert.equal(binance.requests[0].authMode, "none");
 assert.equal(binance.requests[0].request.headers.clienttype, "web");
 assert.equal(binance.requests[0].request.headers.versioncode, "web");
 assert.deepEqual(JSON.parse(binance.requests[0].request.body), { pageIndex: 1, pageSize: 20 });
-assert.equal(binance.requests.some((item) => item.request.url.includes("feed-recommend/list")), false);
+assert.equal(binance.requests.some((item) => item.request.url.includes("feed-recommend/list")), true);
 const binanceDanmaku = await binance.plugin.getDanmaku({ roomId: "49990000123456" });
 assert.equal(binanceDanmaku.transport.kind, "http_polling");
 assert.equal(binanceDanmaku.runtime.driver, "plugin_js_v1");
@@ -139,6 +139,16 @@ const duplicateDanmakuFrame = await binance.plugin.onDanmakuFrame({
   text: JSON.stringify(binanceChat)
 });
 assert.equal(duplicateDanmakuFrame.messages.length, 0);
+const largeSequenceFrame = await binance.plugin.onDanmakuFrame({
+  connectionId: "fixture-connection",
+  frameType: "http_response",
+  statusCode: 200,
+  text: JSON.stringify({ code: "000000", success: true, data: { liveRoomChatMessage: [
+    { seqId: "90071992547409921", content: "大序號一", displayName: "甲" },
+    { seqId: "90071992547409922", content: "大序號二", displayName: "乙" }
+  ] } })
+});
+assert.equal(largeSequenceFrame.messages.length, 2);
 assert.equal((await binance.plugin.destroyDanmakuSession({ connectionId: "fixture-connection" })).ok, true);
 
 const okxList = await fixture("okx-live-list.json");
@@ -182,12 +192,22 @@ assert.equal(okxDanmaku.headers["im-token"], "fixture-im-token");
 const okxDanmakuSession = await okx.plugin.createDanmakuSession({
   connectionId: "okx-fixture-connection",
   roomId: "fixtureShareCode-1",
-  args: okxDanmaku.args
+  args: okxDanmaku.args,
+  headers: okxDanmaku.headers
 });
 assert.equal(okxDanmakuSession.ok, true);
 const okxOpen = await okx.plugin.onDanmakuOpen({ connectionId: "okx-fixture-connection" });
 assert.equal(
   Array.from(okxOpen.writes, (item) => JSON.parse(item.text).websocketCommand).join(","),
+  "WSAuth"
+);
+const okxAuthFrame = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify({ websocketCommand: "WSAuth", code: 0, data: {} })
+});
+assert.equal(
+  Array.from(okxAuthFrame.writes, (item) => JSON.parse(item.text).websocketCommand).join(","),
   "WSSubscribeToLivestream,WSGetNewestSeq"
 );
 const newestFrame = await okx.plugin.onDanmakuFrame({
@@ -210,6 +230,18 @@ const pushFrame = await okx.plugin.onDanmakuFrame({
 });
 assert.equal(pushFrame.messages.length, 1);
 assert.equal(pushFrame.messages[0].text, "即時訊息");
+assert.equal(pushFrame.timer.mode, "heartbeat");
+const singlePushFrame = await okx.plugin.onDanmakuFrame({
+  connectionId: "okx-fixture-connection",
+  frameType: "text",
+  text: JSON.stringify({ websocketCommand: "WSPushMsg", code: 0, data: {
+    channelId: "fixture-channel-1",
+    seq: "90071992547409923",
+    textMessage: { text: "單條即時訊息" },
+    senderName: { nickname: "OKX 觀眾丁" }
+  } })
+});
+assert.equal(singlePushFrame.messages[0].text, "單條即時訊息");
 const duplicatePush = await okx.plugin.onDanmakuFrame({
   connectionId: "okx-fixture-connection",
   frameType: "text",
@@ -217,8 +249,8 @@ const duplicatePush = await okx.plugin.onDanmakuFrame({
 });
 assert.equal(duplicatePush.messages.length, 0);
 assert.equal(
-  JSON.parse((await okx.plugin.onDanmakuTick({ connectionId: "okx-fixture-connection" })).writes[0].text).websocketCommand,
-  "WSPing"
+  (await okx.plugin.onDanmakuTick({ connectionId: "okx-fixture-connection" })).writes[0].text,
+  "ping"
 );
 assert.equal(
   (await okx.plugin.destroyDanmakuSession({ connectionId: "okx-fixture-connection" })).ok,
