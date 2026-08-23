@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-08-23T16:41:11Z",
+  "generatedAt": "2026-08-23T16:55:34Z",
   "sourceName": "OKX Orbit Live for AngelLive",
   "plugins": [
     {
       "pluginId": "okx",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.1.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.0.zip",
-      "sha256": "6f4fcef3e32d30cae0e078bd5486a9f222b17af059f6b9e7585ecdfb0cc6c8c2",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.1.zip",
+      "sha256": "96d64cbedcd73d84001dc6e520850831091663570eb2c1b8b45ee48f901acff6",
       "changelog": [
+        "1.2.1：將匿名 WebSocket 保活縮短為 5 秒，並在每個資料包後重新掛載，修正部分網路週期性 timeout",
         "1.2.0：擴大官方目錄的交叉分頁取樣；保留並校驗分享地址發現的房間；補齊官方 WSAuth、保活與單條推送解析以持續接收彈幕",
         "1.1.0：交叉掃描多組官方目錄分頁並依 shareCode 去重；加入匿名 HLS／FLV 多畫質播放、直播狀態查詢與 WebSocket 即時彈幕",
         "1.0.0：加入 OKX Orbit 公開直播目錄、搜尋、狀態檢查與 stream-room 分享連結解析；原生播放等待穩定公開接口"

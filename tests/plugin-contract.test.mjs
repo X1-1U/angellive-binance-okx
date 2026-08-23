@@ -132,6 +132,8 @@ const firstDanmakuFrame = await binance.plugin.onDanmakuFrame({
 });
 assert.equal(firstDanmakuFrame.messages.length, 2);
 assert.equal(firstDanmakuFrame.messages[0].nickname, "觀眾甲");
+assert.equal(firstDanmakuFrame.timer.mode, "polling");
+assert.equal(firstDanmakuFrame.timer.intervalMs, 3000);
 const duplicateDanmakuFrame = await binance.plugin.onDanmakuFrame({
   connectionId: "fixture-connection",
   frameType: "http_response",
@@ -231,6 +233,7 @@ const pushFrame = await okx.plugin.onDanmakuFrame({
 assert.equal(pushFrame.messages.length, 1);
 assert.equal(pushFrame.messages[0].text, "即時訊息");
 assert.equal(pushFrame.timer.mode, "heartbeat");
+assert.equal(pushFrame.timer.intervalMs, 5000);
 const singlePushFrame = await okx.plugin.onDanmakuFrame({
   connectionId: "okx-fixture-connection",
   frameType: "text",

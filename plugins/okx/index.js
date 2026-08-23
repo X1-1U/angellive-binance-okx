@@ -9,6 +9,7 @@ const _ok_ua =
 const _ok_cacheTTL = 60 * 1000;
 const _ok_discoveryTTL = 6 * 60 * 60 * 1000;
 const _ok_staleValidationLimit = 20;
+const _ok_danmakuHeartbeatMs = 5000;
 const _ok_runtime = {
   rooms: {},
   roomSeenAt: {},
@@ -542,7 +543,7 @@ function _ok_danmakuMessages(session, list, isHistory) {
 
 function _ok_parseDanmakuFrame(session, text) {
   const parsed = _ok_parseJSON(text);
-  const timer = { mode: "heartbeat", intervalMs: 30000 };
+  const timer = { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs };
   if (!parsed || typeof parsed !== "object") return { ok: true, messages: [], timer: timer };
   const command = _ok_str(parsed.websocketCommand || parsed.command);
   const data = _ok_wsData(parsed.data);
@@ -776,7 +777,7 @@ globalThis.LiveParsePlugin = {
     return {
       ok: true,
       writes: [_ok_textWrite("WSAuth", { token: session.token })],
-      timer: { mode: "heartbeat", intervalMs: 30000 }
+      timer: { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs }
     };
   },
 
@@ -786,7 +787,7 @@ globalThis.LiveParsePlugin = {
     return {
       ok: true,
       writes: [{ kind: "text", text: "ping" }],
-      timer: { mode: "heartbeat", intervalMs: 30000 }
+      timer: { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs }
     };
   },
 
@@ -795,7 +796,11 @@ globalThis.LiveParsePlugin = {
     const session = _ok_danmakuSession(runtimePayload);
     if (!session) _ok_throw("INVALID_ARGS", "Unknown danmaku session", {});
     if (_ok_str(runtimePayload.frameType) !== "text") {
-      return { ok: true, messages: [] };
+      return {
+        ok: true,
+        messages: [],
+        timer: { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs }
+      };
     }
     return _ok_parseDanmakuFrame(session, _ok_str(runtimePayload.text));
   },

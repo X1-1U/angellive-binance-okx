@@ -67,8 +67,8 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.0.zip
-dist/okx-1.2.0.zip
+dist/binance-1.2.1.zip
+dist/okx-1.2.1.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json

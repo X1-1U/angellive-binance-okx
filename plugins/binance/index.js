@@ -858,7 +858,8 @@ globalThis.LiveParsePlugin = {
     }
     return {
       ok: true,
-      messages: _bn_chatMessages(session, runtimePayload.text)
+      messages: _bn_chatMessages(session, runtimePayload.text),
+      timer: { mode: "polling", intervalMs: _bn_danmakuIntervalMs }
     };
   },
 
