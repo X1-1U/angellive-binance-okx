@@ -78,6 +78,7 @@ function assertRoom(room, expectedType) {
 
 const binanceList = await fixture("binance-live-list.json");
 const binanceDetail = await fixture("binance-room-detail.json");
+const binanceMP4Detail = await fixture("binance-room-detail-mp4.json");
 const binanceChat = await fixture("binance-chat.json");
 const nextBinanceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
   { seqId: 103, content: "第三條測試彈幕", displayName: "觀眾丙" },
@@ -106,7 +107,9 @@ const binance = await loadPlugin("binance", async (input) => {
     if (binanceChatCalls <= 3) return nextBinanceChat;
     return largeSequenceChat;
   }
-  if (url.includes("room-detail")) return binanceDetail;
+  if (url.includes("room-detail")) {
+    return url.includes("44853539475241") ? binanceMP4Detail : binanceDetail;
+  }
   throw new Error(`Unexpected Binance URL: ${url}`);
 });
 assert.equal(binance.plugin.apiVersion, 1);
@@ -123,6 +126,14 @@ assert.equal(binanceResolved.liveState, "2");
 const binancePlayback = await binance.plugin.getPlayback({ roomId: "39715484101961" });
 assert.equal(binancePlayback[0].qualitys[0].liveCodeType, "m3u8");
 assert.equal(binancePlayback[0].qualitys[0].playbackHints.streamFormat, "hlsVod");
+assert.equal(binancePlayback[0].qualitys[0].playbackHints.latencyMode, "standard");
+assert.deepEqual(Array.from(binancePlayback[0].qualitys[0].playbackHints.preferredEngines), ["mePlayer"]);
+const binanceMP4Playback = await binance.plugin.getPlayback({ roomId: "44853539475241" });
+assert.equal(binanceMP4Playback[0].qualitys[0].title, "MP4 回放");
+assert.equal(binanceMP4Playback[0].qualitys[0].liveCodeType, "m3u8");
+assert.equal(binanceMP4Playback[0].qualitys[0].url.endsWith(".mp4"), true);
+assert.equal(binanceMP4Playback[0].qualitys[0].playbackHints.streamFormat, "hlsVod");
+assert.equal(binanceMP4Playback[0].qualitys[0].playbackHints.isLive, false);
 assert.equal((await binance.plugin.getLiveState({ roomId: "39715484101961" })).liveState, "2");
 assert.equal(binance.requests[0].platformId, "binance");
 assert.equal(binance.requests[0].authMode, "none");
@@ -248,6 +259,37 @@ const pushFrame = await okx.plugin.onDanmakuFrame({
   text: JSON.stringify(okxPush)
 });
 assert.equal(pushFrame.messages.length, 1);
+
+const okxEndedStatus = {
+  code: "0",
+  msg: "",
+  data: {
+    status: 3,
+    allowRecording: 1,
+    channelId: "fixture-ended-channel"
+  }
+};
+const okxEnded = await loadPlugin("okx", async (input) => {
+  const url = input.request.url;
+  if (url.includes("users-all")) return okxList;
+  if (url.includes("anonymous-token")) return okxToken;
+  if (url.includes("/status?")) return okxEndedStatus;
+  throw new Error(`Unexpected ended OKX URL: ${url}`);
+});
+const okxStaleDirectoryRooms = await okxEnded.plugin.getRooms({ id: "all", page: 1 });
+assert.equal(okxStaleDirectoryRooms[0].liveState, "1");
+assert.equal(
+  (await okxEnded.plugin.getLiveState({ roomId: "fixtureShareCode-1" })).liveState,
+  "2"
+);
+assert.equal(
+  (await okxEnded.plugin.getRoomDetail({ roomId: "fixtureShareCode-1" })).liveState,
+  "2"
+);
+await assert.rejects(
+  () => okxEnded.plugin.getPlayback({ roomId: "fixtureShareCode-1" }),
+  (error) => error && error.code === "NOT_FOUND"
+);
 assert.equal(pushFrame.messages[0].text, "即時訊息");
 assert.equal(pushFrame.timer.mode, "heartbeat");
 assert.equal(pushFrame.timer.intervalMs, 5000);

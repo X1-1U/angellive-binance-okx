@@ -1,0 +1,17 @@
+{
+  "code": "000000",
+  "message": "ok",
+  "success": true,
+  "data": {
+    "contentId": 44853539475241,
+    "liveStatus": 2,
+    "status": 2,
+    "streamStatus": 0,
+    "title": "Binance MP4 replay fixture",
+    "replayUrl": "https://bin.bnbstatic.com/static/live-ag/44853539475241/44853539475241.mp4",
+    "userInfo": {
+      "squareUid": "fixture-mp4-uid",
+      "displayName": "Binance MP4 Host"
+    }
+  }
+}

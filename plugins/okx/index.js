@@ -167,6 +167,18 @@ function _ok_roomFromStatus(shareCode, status) {
   return room;
 }
 
+function _ok_applyFreshStatus(room, shareCode, status) {
+  const output = Object.assign(
+    {},
+    room || _ok_fallbackRoom(shareCode, _ok_statusLiveState(status))
+  );
+  output.roomId = _ok_str(shareCode);
+  output.liveState = _ok_statusLiveState(status);
+  const channelId = _ok_str(_ok_object(status).channelId);
+  if (channelId) output.biz = channelId;
+  return _ok_rememberOne(output);
+}
+
 function _ok_statusLiveState(status) {
   const object = _ok_object(status);
   const code = _ok_num(object.status, -1);
@@ -665,11 +677,10 @@ globalThis.LiveParsePlugin = {
     if (shareCode) {
       if (page > 1) return [];
       const found = await _ok_findCurrentRoom(shareCode);
-      if (found) return [found];
       try {
-        return [_ok_rememberOne(_ok_roomFromStatus(shareCode, await _ok_fetchStatus(shareCode)))];
+        return [_ok_applyFreshStatus(found, shareCode, await _ok_fetchStatus(shareCode))];
       } catch (_) {
-        return [_ok_fallbackRoom(shareCode, "0")];
+        return [found || _ok_fallbackRoom(shareCode, "0")];
       }
     }
 
@@ -689,12 +700,11 @@ globalThis.LiveParsePlugin = {
     const runtimePayload = _ok_payload(payload);
     const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
     if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-    const found = await _ok_findCurrentRoom(shareCode);
-    if (found) return found;
+    const cached = _ok_runtime.rooms[shareCode] || null;
     try {
-      return _ok_rememberOne(_ok_roomFromStatus(shareCode, await _ok_fetchStatus(shareCode)));
+      return _ok_applyFreshStatus(cached, shareCode, await _ok_fetchStatus(shareCode));
     } catch (_) {
-      return _ok_fallbackRoom(shareCode, "0");
+      return cached || _ok_fallbackRoom(shareCode, "0");
     }
   },
 
@@ -702,8 +712,6 @@ globalThis.LiveParsePlugin = {
     const runtimePayload = _ok_payload(payload);
     const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
     if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-    const found = await _ok_findCurrentRoom(shareCode);
-    if (found) return { liveState: "1" };
     try {
       return { liveState: _ok_statusLiveState(await _ok_fetchStatus(shareCode)) };
     } catch (_) {
@@ -720,11 +728,10 @@ globalThis.LiveParsePlugin = {
       });
     }
     const found = await _ok_findCurrentRoom(shareCode);
-    if (found) return found;
     try {
-      return _ok_rememberOne(_ok_roomFromStatus(shareCode, await _ok_fetchStatus(shareCode)));
+      return _ok_applyFreshStatus(found, shareCode, await _ok_fetchStatus(shareCode));
     } catch (_) {
-      return _ok_fallbackRoom(shareCode, "0");
+      return found || _ok_fallbackRoom(shareCode, "0");
     }
   },
 

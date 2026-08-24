@@ -506,6 +506,7 @@ async function _bn_detailWithFallback(roomId) {
 }
 
 function _bn_quality(url, title, qn, format, isLive) {
+  const isFLV = format === "flv";
   return {
     roomId: "",
     title: title,
@@ -520,9 +521,9 @@ function _bn_quality(url, title, qn, format, isLive) {
       Origin: "https://www.binance.com"
     },
     playbackHints: {
-      streamFormat: format === "flv" ? "flv" : isLive ? "hlsLive" : "hlsVod",
-      latencyMode: isLive ? "normal" : "vod",
-      preferredEngines: format === "flv" ? ["ijk", "mpv"] : ["avplayer", "mpv"],
+      streamFormat: isFLV ? "flv" : isLive ? "hlsLive" : "hlsVod",
+      latencyMode: "standard",
+      preferredEngines: isFLV ? ["mePlayer"] : isLive ? ["mePlayer", "avPlayer"] : ["mePlayer"],
       isLive: !!isLive,
       requiresCustomSegmentLoader: false,
       selectionBehavior: "direct",
@@ -726,11 +727,10 @@ globalThis.LiveParsePlugin = {
       const replayURL = _bn_pickReplayURL(detail);
       if (/\.m3u8(?:[?#]|$)/i.test(replayURL)) {
         _bn_addQuality(qualities, seen, replayURL, "HLS 回放", 10000, "m3u8", false, roomId);
-      } else if (replayURL) {
-        _bn_throw("BLOCKED", "This Binance replay is not available as HLS", {
-          roomId: roomId,
-          replayURL: replayURL
-        });
+      } else if (/\.m(?:p4|4v)(?:[?#]|$)/i.test(replayURL)) {
+        // AngelLive 的 LiveCodeType 目前只有 m3u8/flv；點播語義由 hlsVod hint
+        // 決定，KSMEPlayer 可以直接播放支援 byte-range 的 MP4/M4V 回放。
+        _bn_addQuality(qualities, seen, replayURL, "MP4 回放", 10000, "m3u8", false, roomId);
       }
     }
 

@@ -30,7 +30,7 @@ angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1
 | 直播目錄 | 多入口合併、近期房間狀態校驗 | 多分頁切片取樣、近期房間狀態校驗 |
 | 房間搜尋 | 目前直播；URL／內容 ID | 目前直播；分享碼／URL |
 | 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
-| AngelLive 原生播放 | HLS／FLV 直播、HLS 回放 | HLS／FLV、多畫質、雙 CDN |
+| AngelLive 原生播放 | HLS／FLV 直播、HLS／MP4 回放 | HLS／FLV、多畫質、雙 CDN |
 | 分享連結解析 | 支援 Square audio、replay、audiospace、uni-qr | 支援 stream-room `shareCode` |
 | 彈幕／聊天 | 公開 WebSocket 驅動聊天室每 3 秒增量更新 | 匿名 WebSocket 即時聊天及最近歷史 |
 
@@ -67,8 +67,8 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.3.zip
-dist/okx-1.2.2.zip
+dist/binance-1.2.4.zip
+dist/okx-1.2.3.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json
