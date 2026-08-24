@@ -162,6 +162,28 @@ function _bn_pickAuthor(item) {
   return _bn_object(object.userInfo || object.contentAuthor || object.author || object.hostInfo);
 }
 
+function _bn_userIds(item) {
+  const object = _bn_object(item);
+  const author = _bn_pickAuthor(object);
+  const values = [
+    author.squareUid,
+    author.userId,
+    author.uid,
+    object.squareAuthorId,
+    object.squareUid,
+    object.userId,
+    object.authorId
+  ];
+  const seen = {};
+  return values.map(function (value) {
+    return _bn_str(value).trim();
+  }).filter(function (value) {
+    if (!value || value === "0" || seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
+}
+
 function _bn_liveCard(item) {
   const object = _bn_object(item);
   const cardType = _bn_str(object.cardType).toUpperCase();
@@ -505,6 +527,44 @@ async function _bn_detailWithFallback(roomId) {
   }
 }
 
+async function _bn_findCurrentLiveByUser(userId) {
+  const target = _bn_str(userId).trim();
+  if (!target || target === "0") return null;
+  const list = await _bn_fetchLiveList();
+  for (const item of list) {
+    if (_bn_userIds(item).indexOf(target) >= 0) return item;
+  }
+  return null;
+}
+
+async function _bn_resolveCurrentTarget(roomId, userId) {
+  const originalRoomId = _bn_parseRoomId(roomId);
+  try {
+    const current = await _bn_findCurrentLiveByUser(userId);
+    const currentRoomId = _bn_pickId(current);
+    if (current && currentRoomId) {
+      try {
+        const detail = Object.assign({}, current, await _bn_fetchRoomDetail(currentRoomId));
+        if (_bn_liveState(detail, false) === "1") {
+          return { roomId: currentRoomId, detail: detail };
+        }
+      } catch (_) {
+        if (_bn_liveState(current, false) === "1") {
+          return { roomId: currentRoomId, detail: current };
+        }
+      }
+    }
+  } catch (_) {}
+
+  if (!originalRoomId) {
+    _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+  }
+  return {
+    roomId: originalRoomId,
+    detail: await _bn_detailWithFallback(originalRoomId)
+  };
+}
+
 function _bn_quality(url, title, qn, format, isLive) {
   const isFLV = format === "flv";
   return {
@@ -711,10 +771,9 @@ globalThis.LiveParsePlugin = {
 
   async getPlayback(payload) {
     const runtimePayload = _bn_payload(payload);
-    const roomId = _bn_parseRoomId(runtimePayload.roomId || runtimePayload.userId);
-    if (!roomId) _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-
-    const detail = await _bn_detailWithFallback(roomId);
+    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const roomId = target.roomId;
+    const detail = target.detail;
     const state = _bn_liveState(detail, false);
     const qualities = [];
     const seen = {};
@@ -775,17 +834,14 @@ globalThis.LiveParsePlugin = {
 
   async getRoomDetail(payload) {
     const runtimePayload = _bn_payload(payload);
-    const roomId = _bn_parseRoomId(runtimePayload.roomId || runtimePayload.userId);
-    if (!roomId) _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-    return _bn_room(await _bn_detailWithFallback(roomId), false);
+    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    return _bn_room(target.detail, false);
   },
 
   async getLiveState(payload) {
     const runtimePayload = _bn_payload(payload);
-    const roomId = _bn_parseRoomId(runtimePayload.roomId || runtimePayload.userId);
-    if (!roomId) _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-    const detail = await _bn_detailWithFallback(roomId);
-    return { liveState: _bn_liveState(detail, false) };
+    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    return { liveState: _bn_liveState(target.detail, false) };
   },
 
   async resolveShare(payload) {
@@ -797,8 +853,8 @@ globalThis.LiveParsePlugin = {
 
   async getDanmaku(payload) {
     const runtimePayload = _bn_payload(payload);
-    const roomId = _bn_parseRoomId(runtimePayload.roomId || runtimePayload.userId);
-    if (!roomId) _bn_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const roomId = target.roomId;
     return {
       args: {
         roomId: roomId,

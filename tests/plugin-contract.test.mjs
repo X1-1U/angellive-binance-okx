@@ -79,6 +79,13 @@ function assertRoom(room, expectedType) {
 const binanceList = await fixture("binance-live-list.json");
 const binanceDetail = await fixture("binance-room-detail.json");
 const binanceMP4Detail = await fixture("binance-room-detail-mp4.json");
+const binanceLiveItem = binanceList.data.vos[0];
+const binanceLiveDetail = {
+  code: "000000",
+  message: "ok",
+  success: true,
+  data: binanceLiveItem
+};
 const binanceChat = await fixture("binance-chat.json");
 const nextBinanceChat = { code: "000000", success: true, data: { liveRoomChatMessage: [
   { seqId: 103, content: "第三條測試彈幕", displayName: "觀眾丙" },
@@ -108,7 +115,9 @@ const binance = await loadPlugin("binance", async (input) => {
     return largeSequenceChat;
   }
   if (url.includes("room-detail")) {
-    return url.includes("44853539475241") ? binanceMP4Detail : binanceDetail;
+    if (url.includes("44853539475241")) return binanceMP4Detail;
+    if (url.includes("49990000123456")) return binanceLiveDetail;
+    return binanceDetail;
   }
   throw new Error(`Unexpected Binance URL: ${url}`);
 });
@@ -134,6 +143,30 @@ assert.equal(binanceMP4Playback[0].qualitys[0].liveCodeType, "m3u8");
 assert.equal(binanceMP4Playback[0].qualitys[0].url.endsWith(".mp4"), true);
 assert.equal(binanceMP4Playback[0].qualitys[0].playbackHints.streamFormat, "hlsVod");
 assert.equal(binanceMP4Playback[0].qualitys[0].playbackHints.isLive, false);
+const binanceFavoriteRoom = await binance.plugin.getRoomDetail({
+  roomId: "39715484101961",
+  userId: "fixture-square-uid"
+});
+assert.equal(binanceFavoriteRoom.roomId, "49990000123456");
+assert.equal(binanceFavoriteRoom.liveState, "1");
+assert.equal(
+  (await binance.plugin.getLiveState({
+    roomId: "39715484101961",
+    userId: "fixture-square-uid"
+  })).liveState,
+  "1"
+);
+const binanceFavoritePlayback = await binance.plugin.getPlayback({
+  roomId: "39715484101961",
+  userId: "fixture-square-uid"
+});
+assert.equal(binanceFavoritePlayback[0].qualitys[0].roomId, "49990000123456");
+assert.equal(binanceFavoritePlayback[0].qualitys[0].playbackHints.isLive, true);
+const binanceFavoriteDanmaku = await binance.plugin.getDanmaku({
+  roomId: "39715484101961",
+  userId: "fixture-square-uid"
+});
+assert.equal(binanceFavoriteDanmaku.args.roomId, "49990000123456");
 assert.equal((await binance.plugin.getLiveState({ roomId: "39715484101961" })).liveState, "2");
 assert.equal(binance.requests[0].platformId, "binance");
 assert.equal(binance.requests[0].authMode, "none");
@@ -201,6 +234,29 @@ assert.equal((await okx.plugin.getCategories({}))[0].subList[0].id, "all");
 const okxRooms = await okx.plugin.getRooms({ id: "all", page: 1 });
 assert.equal(okxRooms.length, 1);
 assertRoom(okxRooms[0], "okx");
+const okxFavoriteRoom = await okx.plugin.getRoomDetail({
+  roomId: "oldFixtureShare-1",
+  userId: "872836765600919552"
+});
+assert.equal(okxFavoriteRoom.roomId, "fixtureShareCode-1");
+assert.equal(okxFavoriteRoom.liveState, "1");
+assert.equal(
+  (await okx.plugin.getLiveState({
+    roomId: "oldFixtureShare-1",
+    userId: "872836765600919552"
+  })).liveState,
+  "1"
+);
+const okxFavoritePlayback = await okx.plugin.getPlayback({
+  roomId: "oldFixtureShare-1",
+  userId: "872836765600919552"
+});
+assert.equal(okxFavoritePlayback[0].qualitys[0].roomId, "fixtureShareCode-1");
+const okxFavoriteDanmaku = await okx.plugin.getDanmaku({
+  roomId: "oldFixtureShare-1",
+  userId: "872836765600919552"
+});
+assert.equal(okxFavoriteDanmaku.args.roomId, "fixtureShareCode-1");
 const okxSearch = await okx.plugin.search({ keyword: "測試主播", page: 1 });
 assert.equal(okxSearch[0].roomId, "fixtureShareCode-1");
 const okxResolved = await okx.plugin.resolveShare({

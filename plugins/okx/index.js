@@ -486,6 +486,41 @@ async function _ok_findCurrentRoom(shareCode) {
   return null;
 }
 
+async function _ok_findCurrentRoomByUser(userId) {
+  const target = _ok_str(userId).trim();
+  if (!target || target === "0") return null;
+  const rooms = await _ok_fetchAllRooms();
+  for (const room of rooms) {
+    if (_ok_str(room.userId).trim() === target) return room;
+  }
+  return null;
+}
+
+async function _ok_resolveCurrentTarget(roomId, userId) {
+  const originalShareCode = _ok_parseShareCode(roomId);
+  try {
+    const current = await _ok_findCurrentRoomByUser(userId);
+    if (current && current.roomId) {
+      const status = await _ok_fetchStatus(current.roomId);
+      if (_ok_statusLiveState(status) === "1") {
+        return {
+          shareCode: current.roomId,
+          room: _ok_applyFreshStatus(current, current.roomId, status),
+          verifiedLive: true
+        };
+      }
+    }
+  } catch (_) {}
+  if (!originalShareCode) {
+    _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+  }
+  return {
+    shareCode: originalShareCode,
+    room: _ok_runtime.rooms[originalShareCode] || null,
+    verifiedLive: false
+  };
+}
+
 function _ok_externalURL(shareCode) {
   return `${_ok_baseURL}/livestream/stream-room?shareCode=${encodeURIComponent(shareCode)}`;
 }
@@ -654,8 +689,8 @@ globalThis.LiveParsePlugin = {
 
   async getPlayback(payload) {
     const runtimePayload = _ok_payload(payload);
-    const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
-    if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const shareCode = target.shareCode;
     const info = await _ok_fetchPlaybackInfo(shareCode);
     const groups = _ok_playbackGroups(shareCode, info.data);
     if (!groups.length) {
@@ -698,9 +733,10 @@ globalThis.LiveParsePlugin = {
 
   async getRoomDetail(payload) {
     const runtimePayload = _ok_payload(payload);
-    const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
-    if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
-    const cached = _ok_runtime.rooms[shareCode] || null;
+    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const shareCode = target.shareCode;
+    if (target.verifiedLive) return target.room;
+    const cached = target.room || _ok_runtime.rooms[shareCode] || null;
     try {
       return _ok_applyFreshStatus(cached, shareCode, await _ok_fetchStatus(shareCode));
     } catch (_) {
@@ -710,8 +746,9 @@ globalThis.LiveParsePlugin = {
 
   async getLiveState(payload) {
     const runtimePayload = _ok_payload(payload);
-    const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
-    if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const shareCode = target.shareCode;
+    if (target.verifiedLive) return { liveState: "1" };
     try {
       return { liveState: _ok_statusLiveState(await _ok_fetchStatus(shareCode)) };
     } catch (_) {
@@ -737,8 +774,8 @@ globalThis.LiveParsePlugin = {
 
   async getDanmaku(payload) {
     const runtimePayload = _ok_payload(payload);
-    const shareCode = _ok_parseShareCode(runtimePayload.roomId || runtimePayload.userId);
-    if (!shareCode) _ok_throw("INVALID_ARGS", "roomId is required", { field: "roomId" });
+    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const shareCode = target.shareCode;
     const status = await _ok_fetchStatus(shareCode);
     const channelId = _ok_str(status.channelId);
     if (_ok_statusLiveState(status) !== "1" || !channelId) {

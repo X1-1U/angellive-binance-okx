@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-08-24T13:39:30Z",
+  "generatedAt": "2026-08-24T13:48:28Z",
   "sourceName": "OKX Orbit Live for AngelLive",
   "plugins": [
     {
       "pluginId": "okx",
-      "version": "1.2.3",
+      "version": "1.2.4",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.3.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.4.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.3.zip",
-      "sha256": "04723db08d4e75de6a935aae4860f47117fcb60fc3845d2f87ee2251d8057661",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.4.zip",
+      "sha256": "75feb4274b89ae68ef3b0f0fd91d0324b6fa503476636c722f242ef23728c897",
       "changelog": [
+        "1.2.4：收藏改以穩定主播 ID 識別；主播開始新場次時自動更新為目前直播房間，播放與彈幕不再查詢上一場 shareCode",
         "1.2.3：收藏、分享與搜尋房間改以官方狀態 API 即時複核，不再因目錄或本機快取把已下播房間誤顯示成直播",
         "1.2.2：除即時推送外每 5 秒校驗聊天室最新序號，漏推時主動補取增量消息，適配 AngelLive 3.0",
         "1.2.1：將匿名 WebSocket 保活縮短為 5 秒，並在每個資料包後重新掛載，修正部分網路週期性 timeout",
