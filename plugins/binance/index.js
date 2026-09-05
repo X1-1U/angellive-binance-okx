@@ -84,8 +84,9 @@ async function _bn_http(request) {
           Accept: "application/json, text/plain, */*",
           "User-Agent": _bn_ua,
           clienttype: "web",
-          lang: "en",
-          Referer: "https://www.binance.com/en/square",
+          lang: "zh-TW",
+          "Accept-Language": "zh-TW,zh-CN;q=0.9,zh;q=0.8",
+          Referer: "https://www.binance.com/zh-TW/square",
           Origin: "https://www.binance.com"
         },
         _bn_object(req.headers)

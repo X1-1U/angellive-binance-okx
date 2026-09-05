@@ -86,6 +86,7 @@ async function _ok_requestJSON(request) {
       headers: Object.assign(
         {
           Accept: "application/json, text/plain, */*",
+          "Accept-Language": "zh-TW,zh-CN;q=0.9,zh;q=0.8",
           "User-Agent": _ok_ua,
           Referer: "https://www.okx.com/orbit/livestreams",
           Origin: "https://www.okx.com"

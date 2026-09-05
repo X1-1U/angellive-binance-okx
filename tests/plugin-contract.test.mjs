@@ -400,6 +400,10 @@ assert.equal(hotBN[0][0].roomId, "90010");
 assert.equal(hotBN[0][0].liveWatchedCount, "1234");
 assert.equal(hotBN[0].at(-1).liveWatchedCount, "0");
 assert.equal(hotBinance.requests.filter(r => r.request.url.includes("/feed/live/list")).length, 12);
+for (const request of hotBinance.requests) {
+  assert.equal(request.request.headers.lang, "zh-TW");
+  assert.equal(request.request.headers["Accept-Language"], "zh-TW,zh-CN;q=0.9,zh;q=0.8");
+}
 
 let activeDirectoryRequests = 0;
 let maxDirectoryRequests = 0;
@@ -424,4 +428,5 @@ assert.equal(hotOK[0][0].liveWatchedCount, "2345");
 assert.equal(hotOK[0][1].liveWatchedCount, "0");
 assert.ok(maxDirectoryRequests <= 4);
 assert.equal(hotOKX.requests.filter(r => r.request.url.endsWith("pageIndex=0&pageSize=20")).length, 1);
+assert.ok(hotOKX.requests.every(r => r.request.headers["Accept-Language"] === "zh-TW,zh-CN;q=0.9,zh;q=0.8"));
 console.log("contract: OK (binance, okx, popularity, pagination, concurrency)");
