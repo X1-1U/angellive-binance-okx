@@ -4,10 +4,10 @@ const _bn_baseURL = "https://www.binance.com";
 const _bn_ua =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 const _bn_pageSize = 20;
-const _bn_liveDirectoryScanPages = 8;
+const _bn_liveDirectoryScanPages = 30;
 const _bn_feedScanPages = 10;
 const _bn_roomPageSize = 50;
-const _bn_cacheTTL = 60 * 1000;
+const _bn_cacheTTL = 30 * 1000;
 const _bn_discoveryTTL = 6 * 60 * 60 * 1000;
 const _bn_staleValidationLimit = 20;
 const _bn_danmakuIntervalMs = 3000;
@@ -265,7 +265,7 @@ function _bn_room(item, forceLive) {
     ),
     roomId: roomId,
     liveWatchedCount: _bn_str(
-      value.onlineCount || value.viewCount || value.viewerCount || value.liveWatchedCount || 0
+      _bn_heat(value)
     ),
     biz: _bn_str(value.liveType || value.contentType)
   };
@@ -321,6 +321,17 @@ async function _bn_fetchFeedPage(pageIndex, contentIds) {
   return Array.isArray(list) ? list : [];
 }
 
+function _bn_heat(item) {
+  const value = Object.assign({}, item, item.liveVO || item.spaceLive || item.liveInfo || {});
+  const status = _bn_object(value.liveStatusVO);
+  for (const count of [value.onlineCount, value.viewerCount, status.onlineCount, value.liveWatchedCount, value.viewCount]) {
+    if (count === null || count === undefined || count === "") continue;
+    const number = Number(String(count).replace(/,/g, ""));
+    if (Number.isFinite(number) && number >= 0) return number;
+  }
+  return 0;
+}
+
 function _bn_dedupeLiveList(items) {
   const seen = {};
   const output = [];
@@ -332,7 +343,7 @@ function _bn_dedupeLiveList(items) {
     output.push(item);
   }
   output.sort(function (left, right) {
-    return _bn_num(right.onlineCount || right.viewCount, 0) - _bn_num(left.onlineCount || left.viewCount, 0);
+    return _bn_heat(right) - _bn_heat(left) || _bn_pickId(left).localeCompare(_bn_pickId(right));
   });
   return output;
 }
@@ -430,7 +441,15 @@ async function _bn_fetchRecommendedLiveList() {
   return collected;
 }
 
+let _bn_liveListPending = null;
 async function _bn_fetchLiveList() {
+  if (_bn_liveListPending) return (await _bn_liveListPending).slice();
+  _bn_liveListPending = _bn_loadLiveList();
+  try { return (await _bn_liveListPending).slice(); }
+  finally { _bn_liveListPending = null; }
+}
+
+async function _bn_loadLiveList() {
   if (
     _bn_runtime.liveListFetchedAt > 0 &&
     Date.now() - _bn_runtime.liveListFetchedAt < _bn_cacheTTL
@@ -442,6 +461,7 @@ async function _bn_fetchLiveList() {
   let directorySucceeded = false;
   let directoryError = null;
   let emptyLivePages = 0;
+  const directorySeen = {};
 
   // Binance Square 的專用直播目錄會把直播卡排在最前面；連續兩個空頁才停止，以避開短暫快取抖動。
   for (let page = 1; page <= _bn_liveDirectoryScanPages; page += 1) {
@@ -449,7 +469,15 @@ async function _bn_fetchLiveList() {
       const items = await _bn_fetchLiveDirectoryPage(page);
       directorySucceeded = true;
       collected.push.apply(collected, items);
-      if (items.some(function (item) { return _bn_liveCard(item); })) {
+      let newLiveRooms = 0;
+      for (const item of items) {
+        const id = _bn_pickId(item);
+        if (_bn_liveCard(item) && id && !directorySeen[id]) {
+          directorySeen[id] = true;
+          newLiveRooms += 1;
+        }
+      }
+      if (newLiveRooms > 0) {
         emptyLivePages = 0;
       } else {
         emptyLivePages += 1;

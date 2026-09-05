@@ -6,7 +6,7 @@ const _ok_probePageSizes = [10, 7, 5, 3, 2, 1];
 const _ok_roomPageSize = 50;
 const _ok_ua =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
-const _ok_cacheTTL = 60 * 1000;
+const _ok_cacheTTL = 30 * 1000;
 const _ok_discoveryTTL = 6 * 60 * 60 * 1000;
 const _ok_staleValidationLimit = 20;
 const _ok_danmakuHeartbeatMs = 5000;
@@ -140,7 +140,7 @@ function _ok_room(item) {
     liveState: "1",
     userId: _ok_str(object.authorId || object.userUid || object.userId),
     roomId: shareCode,
-    liveWatchedCount: _ok_str(live.viewerCount || object.viewerCount || 0),
+    liveWatchedCount: _ok_str(_ok_viewers(live.viewerCount, object.viewerCount)),
     biz: _ok_str(object.officialStatus)
   };
 }
@@ -217,6 +217,15 @@ async function _ok_fetchDirectoryPage(index, pageSize) {
   };
 }
 
+function _ok_viewers() {
+  for (const count of arguments) {
+    if (count === null || count === undefined || count === "") continue;
+    const number = Number(String(count).replace(/,/g, ""));
+    if (Number.isFinite(number) && number >= 0) return number;
+  }
+  return 0;
+}
+
 function _ok_dedupeRooms(users) {
   const seen = {};
   const rooms = [];
@@ -232,7 +241,15 @@ function _ok_dedupeRooms(users) {
   return rooms;
 }
 
+let _ok_liveRoomsPending = null;
 async function _ok_fetchAllRooms() {
+  if (_ok_liveRoomsPending) return (await _ok_liveRoomsPending).slice();
+  _ok_liveRoomsPending = _ok_loadAllRooms();
+  try { return (await _ok_liveRoomsPending).slice(); }
+  finally { _ok_liveRoomsPending = null; }
+}
+
+async function _ok_loadAllRooms() {
   if (
     _ok_runtime.liveRoomsFetchedAt > 0 &&
     Date.now() - _ok_runtime.liveRoomsFetchedAt < _ok_cacheTTL
@@ -244,19 +261,27 @@ async function _ok_fetchAllRooms() {
   const users = primary.users.slice();
   if (primary.total > 0) {
     const probes = [];
+    // 補齊主目錄後續頁，再交叉取樣。
+    const primaryPages = Math.min(30, Math.ceil(primary.total / _ok_pageSize));
+    for (let index = 1; index < primaryPages; index += 1) {
+      probes.push({ index: index, pageSize: _ok_pageSize });
+    }
     // 此接口的 total 會包含重複位置，而且不同 pageSize 的切片不完全一致；交叉取樣後再以 shareCode 合併。
     for (const pageSize of _ok_probePageSizes) {
       const probePages = Math.min(20, Math.ceil(primary.total / pageSize));
       for (let index = 0; index < probePages; index += 1) {
-        probes.push(
-          _ok_fetchDirectoryPage(index, pageSize).catch(function () {
-            return { total: primary.total, users: [] };
-          })
-        );
+        probes.push({ index: index, pageSize: pageSize });
       }
     }
-    const batches = await Promise.all(probes);
-    for (const batch of batches) users.push.apply(users, batch.users);
+    // 限制同時請求數，避免大量收藏刷新時觸發上游限流。
+    for (let offset = 0; offset < probes.length; offset += 4) {
+      const batches = await Promise.all(probes.slice(offset, offset + 4).map(function (probe) {
+        return _ok_fetchDirectoryPage(probe.index, probe.pageSize).catch(function () {
+          return { users: [] };
+        });
+      }));
+      for (const batch of batches) users.push.apply(users, batch.users);
+    }
   }
 
   const now = Date.now();

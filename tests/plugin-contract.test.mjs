@@ -385,4 +385,43 @@ assert.equal(
 assert.equal(okx.requests[0].platformId, "okx");
 assert.equal(okx.requests[0].authMode, "none");
 
-console.log("contract: OK (binance, okx)");
+// Discovery must reach later primary pages, rank actual audience and share concurrent scans.
+const hotBinance = await loadPlugin("binance", async (input) => {
+  if (!input.request.url.includes("/feed/live/list")) return { code: "000000", data: { vos: [] } };
+  const page = JSON.parse(input.request.body).pageIndex;
+  const items = page <= 10 ? [{ ...binanceLiveItem, id: String(90000 + page),
+    onlineCount: page === 1 ? 0 : undefined, viewerCount: page === 10 ? "1,234" : page,
+    viewCount: 999999 }] : [];
+  return { code: "000000", data: { vos: items } };
+});
+const hotBN = await Promise.all([hotBinance.plugin.getRooms({ page: 1 }), hotBinance.plugin.getRooms({ page: 1 })]);
+assert.equal(hotBN[0].length, 10);
+assert.equal(hotBN[0][0].roomId, "90010");
+assert.equal(hotBN[0][0].liveWatchedCount, "1234");
+assert.equal(hotBN[0].at(-1).liveWatchedCount, "0");
+assert.equal(hotBinance.requests.filter(r => r.request.url.includes("/feed/live/list")).length, 12);
+
+let activeDirectoryRequests = 0;
+let maxDirectoryRequests = 0;
+const hotOKX = await loadPlugin("okx", async (input) => {
+  const url = new URL(input.request.url);
+  assert.ok(url.pathname.endsWith("users-all"));
+  activeDirectoryRequests += 1;
+  maxDirectoryRequests = Math.max(maxDirectoryRequests, activeDirectoryRequests);
+  await new Promise(resolve => setTimeout(resolve, 1));
+  activeDirectoryRequests -= 1;
+  const late = url.searchParams.get("pageSize") === "20" && url.searchParams.get("pageIndex") === "1";
+  const user = { ...okxList.data.users[0], livestream: {
+    ...okxList.data.users[0].livestream,
+    shareCode: late ? "hot-second-page" : "cold-first-page", viewerCount: late ? "2,345" : 0
+  }, viewerCount: 99999 };
+  return { code: "0", data: { total: 40, users: [user] } };
+});
+const hotOK = await Promise.all([hotOKX.plugin.getRooms({ page: 1 }), hotOKX.plugin.getRooms({ page: 1 })]);
+assert.equal(hotOK[0].length, 2);
+assert.equal(hotOK[0][0].roomId, "hot-second-page");
+assert.equal(hotOK[0][0].liveWatchedCount, "2345");
+assert.equal(hotOK[0][1].liveWatchedCount, "0");
+assert.ok(maxDirectoryRequests <= 4);
+assert.equal(hotOKX.requests.filter(r => r.request.url.endsWith("pageIndex=0&pageSize=20")).length, 1);
+console.log("contract: OK (binance, okx, popularity, pagination, concurrency)");

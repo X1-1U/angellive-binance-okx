@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-08-24T13:48:28Z",
+  "generatedAt": "2026-09-05T12:37:34Z",
   "sourceName": "OKX Orbit Live for AngelLive",
   "plugins": [
     {
       "pluginId": "okx",
-      "version": "1.2.4",
+      "version": "1.2.5",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.4.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.5.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.4.zip",
-      "sha256": "75feb4274b89ae68ef3b0f0fd91d0324b6fa503476636c722f242ef23728c897",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.5.zip",
+      "sha256": "d3f6ad495946ea2ec1f708c0a604c844567d84c25d5494f1922fe9c87bf73bd8",
       "changelog": [
+        "1.2.5：補齊主目錄分頁並保留交叉取樣；按觀眾數降序展示，修正零值與千位分隔符；限制並行請求，目錄快取縮短為 30 秒",
         "1.2.4：收藏改以穩定主播 ID 識別；主播開始新場次時自動更新為目前直播房間，播放與彈幕不再查詢上一場 shareCode",
         "1.2.3：收藏、分享與搜尋房間改以官方狀態 API 即時複核，不再因目錄或本機快取把已下播房間誤顯示成直播",
         "1.2.2：除即時推送外每 5 秒校驗聊天室最新序號，漏推時主動補取增量消息，適配 AngelLive 3.0",
