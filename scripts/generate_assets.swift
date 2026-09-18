@@ -4,7 +4,7 @@ import AppKit
 import Foundation
 
 let arguments = CommandLine.arguments
-guard arguments.count == 2 else {
+guard arguments.count == 2 || arguments.count == 3 else {
     fputs("usage: generate_assets.swift ROOT\n", stderr)
     exit(2)
 }
@@ -117,10 +117,12 @@ func square(plugin: String, size: Int) throws {
     try render(width: size, height: size, output: output) {
         let side = CGFloat(size)
         let scale = side / 128
-        let background = plugin == "binance" ? color(0xF0B90B) : color(0x111111)
+        let background = plugin == "youtube-tw" ? color(0xE62117) : plugin == "binance" ? color(0xF0B90B) : color(0x111111)
         let foreground = plugin == "binance" ? color(0x101010) : color(0xFFFFFF)
         fillRounded(NSRect(x: 0, y: 0, width: side, height: side), radius: 26 * scale, color: background)
-        if plugin == "binance" {
+        if plugin == "youtube-tw" {
+            fillPolygon([NSPoint(x: 49 * scale, y: 36 * scale), NSPoint(x: 49 * scale, y: 92 * scale), NSPoint(x: 91 * scale, y: 64 * scale)], color: foreground)
+        } else if plugin == "binance" {
             drawBinanceMark(centerX: side / 2, centerY: side / 2, scale: scale, color: foreground)
         } else {
             drawOKXMark(originX: 20 * scale, originY: 43 * scale, scale: scale, color: foreground)
@@ -133,7 +135,12 @@ func television(plugin: String, width: Int, height: Int, dark: Bool, suffix: Str
     try render(width: width, height: height, output: output) {
         let w = CGFloat(width)
         let h = CGFloat(height)
-        if plugin == "binance" {
+        if plugin == "youtube-tw" {
+            fillRounded(NSRect(x: 0, y: 0, width: w, height: h), radius: 28, color: dark ? color(0x191919) : color(0xE62117))
+            fillPolygon([NSPoint(x: 35, y: h / 2 - 32), NSPoint(x: 35, y: h / 2 + 32), NSPoint(x: 90, y: h / 2)], color: color(0xFFFFFF))
+            drawLabel("YouTube", x: 117, y: h / 2 + 3, size: 31, color: color(0xFFFFFF), weight: .bold)
+            drawLabel("TAIWAN LIVE", x: 117, y: h / 2 - 26, size: 16, color: color(0xFFFFFF), weight: .semibold, spacing: 1)
+        } else if plugin == "binance" {
             let background = dark ? color(0x151515) : color(0xF0B90B)
             let primary = dark ? color(0xF8F8F8) : color(0x101010)
             let accent = color(0xF0B90B)
@@ -160,7 +167,9 @@ func television(plugin: String, width: Int, height: Int, dark: Bool, suffix: Str
 }
 
 do {
-    for plugin in ["binance", "okx"] {
+    for plugin in (arguments.count == 3 ? [arguments[2]] : ["binance", "okx", "youtube-tw"]) {
+        guard ["binance", "okx", "youtube-tw"].contains(plugin) else { throw NSError(domain: "AngelLiveAssets", code: 4) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("plugins/\(plugin)/assets"), withIntermediateDirectories: true)
         try square(plugin: plugin, size: 128)
         try square(plugin: plugin, size: 50)
         try square(plugin: plugin, size: 30)

@@ -6,7 +6,7 @@ require "open3"
 require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
-PLUGINS = %w[binance okx].freeze
+PLUGINS = %w[binance okx youtube-tw].freeze
 ICON_SIZES = {
   "live_card" => [128, 128],
   "mini_live_card" => [30, 30],
@@ -80,7 +80,7 @@ if source_path.file?
   begin
     source = JSON.parse(source_path.read)
     errors << "#{source_path}: apiVersion must be 1" unless source["apiVersion"] == 1
-    errors << "#{source_path}: plugins must contain two items" unless source["plugins"].is_a?(Array) && source["plugins"].size == 2
+    errors << "#{source_path}: plugins must match configured platforms" unless source["plugins"].is_a?(Array) && source["plugins"].map { |p| p["pluginId"] }.sort == PLUGINS.sort
     Array(source["plugins"]).each do |item|
       plugin_id = item["pluginId"]
       zip_path = ROOT.join("dist", "#{plugin_id}-#{item["version"]}.zip")

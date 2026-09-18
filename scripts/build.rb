@@ -9,7 +9,7 @@ require "tmpdir"
 require "time"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
-PLUGINS = %w[binance okx].freeze
+PLUGINS = %w[binance okx youtube-tw].freeze
 DIST = ROOT.join("dist")
 ASSET_NAMES = lambda do |plugin_id|
   [
@@ -101,7 +101,7 @@ end
 source = {
   "apiVersion" => 1,
   "generatedAt" => Time.now.utc.iso8601,
-  "sourceName" => "Binance + OKX Live for AngelLive",
+  "sourceName" => "Binance + OKX + YouTube Live for AngelLive",
   "plugins" => items
 }
 DIST.join("source.json").write(JSON.pretty_generate(source) + "\n")

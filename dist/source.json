@@ -1,7 +1,7 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-09-05T12:43:54Z",
-  "sourceName": "Binance + OKX Live for AngelLive",
+  "generatedAt": "2026-09-18T13:36:46Z",
+  "sourceName": "Binance + OKX + YouTube Live for AngelLive",
   "plugins": [
     {
       "pluginId": "binance",
@@ -136,6 +136,66 @@
       "iosIcon": "assets/live_card_okx.png",
       "macosIcon": "assets/live_card_okx.png",
       "tvosIcon": "assets/live_card_okx.png",
+      "visibility": "public"
+    },
+    {
+      "pluginId": "youtube-tw",
+      "version": "1.0.0",
+      "platform": "youtube-tw",
+      "platformName": "youtube-tw",
+      "platformDescription": "台灣優先、繁體中文的 YouTube 公開直播與聊天室（免登入，非官方實驗版）",
+      "zipURLs": [
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.0.zip"
+      ],
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.0.zip",
+      "sha256": "a0993356d521f422884ef4d955f1a83165b12535a7e1ab238cd9d81bc2042f14",
+      "changelog": [
+        "1.0.0：加入免登入 YouTube 台灣直播推薦、新聞／遊戲／音樂／即時影像分類、HLS 多畫質與持續聊天室彈幕；不修改 Binance／OKX"
+      ],
+      "auth": {
+        "required": false,
+        "credentialKinds": [
+
+        ],
+        "supportsStatusCheck": false,
+        "supportsValidation": false
+      },
+      "capabilities": {
+        "categories": {
+          "status": "available"
+        },
+        "rooms": {
+          "status": "partial",
+          "reason": "zh-TW、gl=TW 公開直播搜尋推薦；各分類最多合併三頁，依觀眾數排序，不保證涵蓋全站或主播所在地"
+        },
+        "playback": {
+          "status": "partial",
+          "reason": "僅支援公開、免登入且提供 HLS 的正在直播影片；登入驗證、會員、年齡或地區限制不支援"
+        },
+        "search": {
+          "status": "available"
+        },
+        "roomDetail": {
+          "status": "partial",
+          "reason": "可匿名取得播放資料的直播；收藏為該次影片 ID，不自動追蹤頻道的新場次"
+        },
+        "liveState": {
+          "status": "partial",
+          "reason": "查詢目前影片的官方播放狀態，不把回放當成直播"
+        },
+        "shareResolve": {
+          "status": "partial",
+          "reason": "支援 youtube.com/watch、/live、youtu.be 影片分享地址及影片 ID；不支援頻道 /@handle/live"
+        },
+        "danmaku": {
+          "status": "partial",
+          "reason": "匿名讀取公開聊天室，按官方 continuation 持續輪詢並去重；不可發言；需支援 HTTP polling 定時回調的新版 AngelLive"
+        }
+      },
+      "icon": "assets/live_card_youtube-tw.png",
+      "iosIcon": "assets/live_card_youtube-tw.png",
+      "macosIcon": "assets/live_card_youtube-tw.png",
+      "tvosIcon": "assets/live_card_youtube-tw.png",
       "visibility": "public"
     }
   ]

@@ -1,11 +1,12 @@
-# Binance + OKX Live for AngelLive
+# Binance + OKX + YouTube Live for AngelLive
 
-這個專案包含兩個獨立的 AngelLive v2 原生插件包：
+這個專案包含三個獨立的 AngelLive 原生插件包：
 
 - `binance`：Binance Square Live
 - `okx`：OKX Orbit Live
+- `youtube-tw`：YouTube 台灣直播（免登入實驗版）
 
-兩者皆使用 `globalThis.LiveParsePlugin` API v1，不是瀏覽器擴充套件，也不是 Codex 插件。
+皆使用 `globalThis.LiveParsePlugin` API v1，不是瀏覽器擴充套件，也不是 Codex 插件。
 
 ## 直接安裝
 
@@ -15,13 +16,37 @@
 https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/source.json
 ```
 
-在已安裝 AngelLive 的裝置開啟以下 deep link，可一次加入 Binance 與 OKX：
+在已安裝 AngelLive 的裝置開啟以下 deep link，可加入這三個平台：
 
 ```text
 angellive://install-source?source=https%3A%2F%2Fraw.githubusercontent.com%2FX1-1U%2Fangellive-binance-okx%2Fmain%2Fdist%2Fsource.json
 ```
 
 若只想加入單一平台，可使用 [`dist/install-binance.txt`](dist/install-binance.txt) 或 [`dist/install-okx.txt`](dist/install-okx.txt) 內的連結。
+
+YouTube 獨立訂閱源（也已包含在原有總訂閱源）：
+
+```text
+https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/source-youtube-tw.json
+```
+
+## YouTube 免登入版
+
+- 繁體中文 `hl=zh-TW`、地區 `gl=TW`，以台灣直播搜尋作推薦；新聞、遊戲、音樂、即時影像分類，每類最多合併三頁並依觀眾數排序。這不是個人化首頁，也不能保證主播位於台灣，更不是台灣代理節點。
+- 即時查詢公開播放器返回的 HLS，支援自動畫質與可用分辨率；只播放正在直播的影片，不把回放／預告冒充直播。串流在裝置上即時解析，不把會過期的播放 URL 寫進訂閱源。
+- 公開聊天室以 continuation 持續輪詢並去重，顯示文字、付費文字與部分會員訊息；只讀不發言。採用網站預設聊天室篩選，不保證所有被網站過濾／刪除的留言可見。
+- 不需 YouTube 登入、Cookie、API key、伺服器或第三方代理。會員、年齡限制、地區限制、機器人驗證、未提供公開 HLS 或已關閉聊天室的房間不支援，會顯示明確錯誤。
+- 分享添加支援 `youtube.com/watch?v=...`、`youtube.com/live/...`、`youtu.be/...` 和影片 ID。收藏對應本次影片；主播換新影片開播時需重新添加，暫不自動追蹤頻道。
+- 請使用支援 `http_polling` 與 `plugin_js_v1` 定時回調的新版 AngelLive。以官方倉庫提交 `295f7dc7d36e9a9ba288a43185eff3d6ea53835f` 的協議實作；未在使用者 Apple TV／iPhone 上做端到端驗證。
+
+2026-09-18 網路實測：台灣列表、寰宇／中天／TVBS 直播取得多畫質 HLS；持續分片檢查超過 1 分鐘，播放清單持續前進且分片 HTTP 200；中天與 TVBS 在初始歷史之後仍收到新增聊天室訊息。這是接口／分片測試，不等同於保證所有裝置長時間播放無卡頓。需要重新測試時：
+
+```sh
+node tests/youtube-contract.test.mjs
+node scripts/smoke-youtube.mjs VIDEO_ID
+```
+
+實測腳本不儲存影片、不發送留言，只丟棄分片內容並輸出連線統計。
 
 ## 支援狀態
 
@@ -45,6 +70,7 @@ OKX 的官方直播狀態、聊天與 Web 平台播放資訊都可以透過臨�
 ```text
 plugins/binance/           Binance 插件原始碼、manifest、圖示
 plugins/okx/               OKX 插件原始碼、manifest、圖示
+plugins/youtube-tw/           YouTube 免登入直播與聊天室
 fixtures/                  契約測試用的精簡 API 回應
 tests/plugin-contract.test.mjs
 scripts/generate_assets.sh 重新產生各平台固定尺寸圖示
@@ -64,6 +90,7 @@ SOURCE_URL="https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/d
   ./scripts/build.rb
 ./scripts/validate.rb
 node tests/plugin-contract.test.mjs
+node tests/youtube-contract.test.mjs
 ```
 
 `node` 只用於 mock 契約測試；打包本身只需要 macOS 的 Swift、Ruby 與 `/usr/bin/zip`。
@@ -71,14 +98,17 @@ node tests/plugin-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.5.zip
-dist/okx-1.2.4.zip
+dist/binance-1.2.7.zip
+dist/okx-1.2.6.zip
+dist/youtube-tw-1.0.0.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json
+dist/source-youtube-tw.json
 dist/install-link.txt
 dist/install-binance.txt
 dist/install-okx.txt
+dist/install-youtube-tw.txt
 ```
 
 ## 安裝到 AngelLive
@@ -92,7 +122,7 @@ AngelLive 的 source index 和 ZIP 都必須放在可直接下載的穩定 HTTPS
    BASE_URL="https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist" ./scripts/build.rb
    ```
 
-3. 將 `dist/` 內兩個 ZIP 與所需的 source JSON 上傳到該路徑，不要在上傳後修改 ZIP。
+3. 將 `dist/` 內目前版本的三個 ZIP 與所需的 source JSON 上傳到該路徑，不要在上傳後修改 ZIP。
 4. 開啟對應 `install-*.txt` 內的 `angellive://install-source?...` deep link。
 
 未設定 `BASE_URL` 時，建置器會刻意使用 `YOUR-HOST.example` 佔位網址；這份 source JSON 通過格式檢查，但在替換／重建並上傳前不能安裝。
@@ -102,8 +132,8 @@ AngelLive 的 source index 和 ZIP 都必須放在可直接下載的穩定 HTTPS
 - Binance 插件使用 Binance Square 現行網頁所用的公開 `/bapi/square` 與 `/bapi/composite` 接口；不需要 API key、交易權限或帳戶 cookie。
 - OKX 插件使用 Orbit 網頁的公開直播目錄，並透過臨時匿名 token 讀取 HLS／FLV、房間狀態與即時聊天；不讀取或儲存 OKX 登入 cookie。
 - 這些是平台前端使用、但未承諾穩定性的接口，平台改版、地區限制、限流或 WAF 都可能令插件需要更新。
-- 兩個插件只讀取直播內容，不執行下單、轉帳或任何帳戶操作。
-- Binance、OKX 及其標誌是各自權利人的商標；本專案是非官方社群整合。
+- 三個插件只讀取直播內容，不執行下單、轉帳、發言或任何帳戶操作。
+- Binance、OKX、YouTube 及其標誌是各自權利人的商標；本專案是非官方社群整合。
 
 參考：
 

@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import vm from 'node:vm';
+const source = await fs.readFile(new URL('../plugins/youtube-tw/index.js',import.meta.url),'utf8');
+const embed = (data,cfg={INNERTUBE_CONTEXT:{client:{clientName:'WEB',clientVersion:'test'}}}) => `<script>ytcfg.set(${JSON.stringify(cfg)});</script><script>var ytInitialData = ${JSON.stringify(data)};</script>`;
+const id = 'testvideo01', hot = 'testvideo02';
+const card = (videoId,count,live=true) => ({videoRenderer:{videoId,title:{runs:[{text:'台灣 {直播} "測試"'}]},ownerText:{runs:[{text:'測試頻道',navigationEndpoint:{browseEndpoint:{browseId:'UCtest'}}}]},viewCountText:{simpleText:count},badges:live?[{metadataBadgeRenderer:{style:'BADGE_STYLE_TYPE_LIVE_NOW'}}]:[],thumbnail:{thumbnails:[{url:'https://i.ytimg.com/test.jpg'}]}}});
+const message = (id,text='新訊息') => ({addChatItemAction:{item:{liveChatTextMessageRenderer:{id,message:{runs:[{text}]},authorName:{simpleText:'測試者'}}}}});
+const chat = (token,actions=[]) => ({continuationContents:{liveChatContinuation:{actions,continuations:[{timedContinuationData:{continuation:token,timeoutMs:5000}}]}}});
+let playerStatus = 'OK', isLive=true, isUpcoming=false, hls=true, chatClosed=false, failTick=false;
+let tick=0, searchPages=0;
+const requests=[];
+const context = vm.createContext({Host:{raise(code,message){const e=new Error(message);e.code=code;throw e;},http:{async request(input){
+  requests.push(input);
+  const {url,body} = input.request;
+  let result;
+  if(url.includes('/results?')) result=embed({items:[card(id,'1,200 人正在觀看'),card('notlive0001','90000',false),{continuationItemRenderer:{continuationEndpoint:{continuationCommand:{token:'page2'}}}}]});
+  else if(url.includes('/youtubei/v1/search')) {searchPages++;result={items:[card(id,'1,200'),card(hot,'2.3萬 人正在觀看')]};}
+  else if(url.includes('/youtubei/v1/player')) result={playabilityStatus:{status:playerStatus},videoDetails:{videoId:id,isLive,isUpcoming,channelId:'UCtest',title:'直播',author:'主播'},streamingData:hls?{hlsManifestUrl:'https://manifest.googlevideo.com/master.m3u8'}:{}};
+  else if(url.includes('manifest.googlevideo.com')) result='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100,RESOLUTION=1280x720\nhttps://manifest.googlevideo.com/720.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://evil.invalid/stream\n';
+  else if(url.includes('/watch?')) result=embed(chatClosed?{}:{liveChatRenderer:{continuations:[{reloadContinuationData:{continuation:'reload%3D'}}]}});
+  else if(url.includes('/live_chat?')) result=embed(chat('next0',[message('old','舊訊息')]));
+  else if(url.includes('/live_chat/get_live_chat')) {
+    if(failTick) {failTick=false;throw new Error('temporary network');}
+    assert.equal(JSON.parse(body).continuation,`next${tick}`);
+    tick++;
+    result=chat(`next${tick}`,[message('old','舊訊息'),message('new'+tick)]);
+  } else throw new Error('Unexpected request: '+url);
+  return {status:200,bodyText:typeof result==='string'?result:JSON.stringify(result)};
+}}}});
+vm.runInContext(source,context);
+const p=context.LiveParsePlugin;
+const categories=await p.getCategories();
+assert.equal(categories[0].subList.length,5);
+const rooms=await p.getRooms({id:'all',page:1});
+assert.equal(rooms.length,2);assert.equal(rooms[0].roomId,hot);assert.equal(rooms[0].liveWatchedCount,'23000');
+assert.equal(rooms[0].liveType,'youtube-tw');
+assert.equal(searchPages,1);
+assert.equal((await p.getRooms({id:'all',page:2})).length,0);assert.equal(searchPages,1);
+const initialURL=requests[0].request.url;
+assert.ok(initialURL.includes('gl=TW')&&initialURL.includes('hl=zh-TW'));
+const playback=await p.getPlayback({roomId:id});
+assert.equal(playback[0].qualitys.length,2);assert.equal(playback[0].qualitys[1].title,'HLS 720p');
+assert.equal(playback[0].qualitys[0].playbackHints.isLive,true);
+for(const url of [`https://youtu.be/${id}?si=test`,`https://www.youtube.com/live/${id}`,`https://www.youtube.com/watch?v=${id}&t=1`]) assert.equal((await p.resolveShare({shareCode:url})).roomId,id);
+const before=requests.length;
+await assert.rejects(p.resolveShare({shareCode:`https://youtube.com.evil.invalid/watch?v=${id}`}),{code:'INVALID_ARGS'});
+assert.equal(requests.length,before);
+isLive=false;
+assert.equal(await p.getLiveState({roomId:id}),'0');
+await assert.rejects(p.getPlayback({roomId:id}),{code:'NOT_FOUND'});
+isUpcoming=true;playerStatus='LIVE_STREAM_OFFLINE';assert.equal(await p.getLiveState({roomId:id}),'3');
+isUpcoming=false;assert.equal(await p.getLiveState({roomId:id}),'0');
+isLive=true;playerStatus='LOGIN_REQUIRED';await assert.rejects(p.getPlayback({roomId:id}),{code:'AUTH_REQUIRED'});
+playerStatus='OK';hls=false;await assert.rejects(p.getPlayback({roomId:id}),{code:'BLOCKED'});hls=true;
+const plan=await p.getDanmaku({roomId:id});
+assert.equal(plan.transport.kind,'http_polling');assert.equal(plan.transport.polling.sendOnConnect,false);
+const init=await p.createDanmakuSession({connectionId:'c',roomId:id,args:plan.args});
+assert.equal(init.messages.length,1);assert.equal(init.timer.mode,'polling');
+for(let i=0;i<3;i++){const frame=await p.onDanmakuTick({connectionId:'c'});assert.equal(frame.messages.length,1);assert.equal(frame.messages[0].text,'新訊息');assert.equal(frame.timer.intervalMs,5000);}
+failTick=true;await assert.rejects(p.onDanmakuTick({connectionId:'c'}),/temporary network/);
+assert.equal((await p.onDanmakuTick({connectionId:'c'})).messages.length,1,'a failed tick must not leave session busy');
+await p.destroyDanmakuSession({connectionId:'c'});await assert.rejects(p.onDanmakuTick({connectionId:'c'}),{code:'INVALID_ARGS'});
+chatClosed=true;await assert.rejects(p.createDanmakuSession({connectionId:'closed',roomId:id}),{code:'NOT_FOUND'});
+assert.ok(requests.every(r=>r.authMode==='none'&&!Object.keys(r.request.headers).some(k=>k.toLowerCase()==='cookie')));
+assert.ok(requests.every(r=>r.platformId==='youtube-tw'));
+console.log('youtube contract: OK (TW discovery, pagination, live-only HLS, share safety, anonymous incremental chat, error recovery)');
