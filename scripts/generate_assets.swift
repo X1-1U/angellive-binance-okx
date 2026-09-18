@@ -117,10 +117,15 @@ func square(plugin: String, size: Int) throws {
     try render(width: size, height: size, output: output) {
         let side = CGFloat(size)
         let scale = side / 128
-        let background = plugin == "youtube-tw" ? color(0xE62117) : plugin == "binance" ? color(0xF0B90B) : color(0x111111)
+        let background = plugin == "twitch-live" ? color(0x9146FF) : plugin == "youtube-tw" ? color(0xE62117) : plugin == "binance" ? color(0xF0B90B) : color(0x111111)
         let foreground = plugin == "binance" ? color(0x101010) : color(0xFFFFFF)
         fillRounded(NSRect(x: 0, y: 0, width: side, height: side), radius: 26 * scale, color: background)
-        if plugin == "youtube-tw" {
+        if plugin == "twitch-live" {
+            fillRounded(NSRect(x: 24 * scale, y: 35 * scale, width: 80 * scale, height: 64 * scale), radius: 9 * scale, color: foreground)
+            fillPolygon([NSPoint(x: 34 * scale, y: 40 * scale), NSPoint(x: 34 * scale, y: 21 * scale), NSPoint(x: 55 * scale, y: 40 * scale)], color: foreground)
+            fillRounded(NSRect(x: 46 * scale, y: 54 * scale, width: 10 * scale, height: 25 * scale), radius: 2 * scale, color: background)
+            fillRounded(NSRect(x: 74 * scale, y: 54 * scale, width: 10 * scale, height: 25 * scale), radius: 2 * scale, color: background)
+        } else if plugin == "youtube-tw" {
             fillPolygon([NSPoint(x: 49 * scale, y: 36 * scale), NSPoint(x: 49 * scale, y: 92 * scale), NSPoint(x: 91 * scale, y: 64 * scale)], color: foreground)
         } else if plugin == "binance" {
             drawBinanceMark(centerX: side / 2, centerY: side / 2, scale: scale, color: foreground)
@@ -135,7 +140,11 @@ func television(plugin: String, width: Int, height: Int, dark: Bool, suffix: Str
     try render(width: width, height: height, output: output) {
         let w = CGFloat(width)
         let h = CGFloat(height)
-        if plugin == "youtube-tw" {
+        if plugin == "twitch-live" {
+            fillRounded(NSRect(x: 0, y: 0, width: w, height: h), radius: 28, color: dark ? color(0x201037) : color(0x9146FF))
+            drawLabel("twitch-live", x: 28, y: h / 2 + 2, size: 38, color: color(0xFFFFFF), weight: .bold)
+            drawLabel("LIVE + CHAT", x: 30, y: h / 2 - 30, size: 17, color: color(0xFFFFFF), weight: .semibold, spacing: 2)
+        } else if plugin == "youtube-tw" {
             fillRounded(NSRect(x: 0, y: 0, width: w, height: h), radius: 28, color: dark ? color(0x191919) : color(0xE62117))
             fillPolygon([NSPoint(x: 35, y: h / 2 - 32), NSPoint(x: 35, y: h / 2 + 32), NSPoint(x: 90, y: h / 2)], color: color(0xFFFFFF))
             drawLabel("YouTube", x: 117, y: h / 2 + 3, size: 31, color: color(0xFFFFFF), weight: .bold)
@@ -167,8 +176,8 @@ func television(plugin: String, width: Int, height: Int, dark: Bool, suffix: Str
 }
 
 do {
-    for plugin in (arguments.count == 3 ? [arguments[2]] : ["binance", "okx", "youtube-tw"]) {
-        guard ["binance", "okx", "youtube-tw"].contains(plugin) else { throw NSError(domain: "AngelLiveAssets", code: 4) }
+    for plugin in (arguments.count == 3 ? [arguments[2]] : ["binance", "okx", "youtube-tw", "twitch-live"]) {
+        guard ["binance", "okx", "youtube-tw", "twitch-live"].contains(plugin) else { throw NSError(domain: "AngelLiveAssets", code: 4) }
         try FileManager.default.createDirectory(at: root.appendingPathComponent("plugins/\(plugin)/assets"), withIntermediateDirectories: true)
         try square(plugin: plugin, size: 128)
         try square(plugin: plugin, size: 50)

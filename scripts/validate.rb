@@ -6,7 +6,7 @@ require "open3"
 require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
-PLUGINS = %w[binance okx youtube-tw].freeze
+PLUGINS = %w[binance okx youtube-tw twitch-live].freeze
 ICON_SIZES = {
   "live_card" => [128, 128],
   "mini_live_card" => [30, 30],
