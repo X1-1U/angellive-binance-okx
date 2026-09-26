@@ -612,7 +612,7 @@ function _bn_quality(url, title, qn, format, isLive) {
     playbackHints: {
       streamFormat: isFLV ? "flv" : isLive ? "hlsLive" : "hlsVod",
       latencyMode: "standard",
-      preferredEngines: isFLV ? ["mePlayer"] : isLive ? ["mePlayer", "avPlayer"] : ["mePlayer"],
+      preferredEngines: isFLV ? ["mePlayer"] : isLive ? ["avPlayer", "mePlayer"] : ["mePlayer"],
       isLive: !!isLive,
       requiresCustomSegmentLoader: false,
       selectionBehavior: "direct",

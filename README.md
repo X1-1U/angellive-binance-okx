@@ -1,5 +1,7 @@
 # Binance + OKX + YouTube + Twitch Live for AngelLive
 
+2026-09-26 Binance 1.2.8 播放對照測試：直播 HLS 優先使用 AVPlayer，ME 作備援。FLV、回放、目錄、彈幕及其他平台不變。刷新訂閱並更新插件後，退出直播間再選 HLS，連續觀看至少 10 分鐘；若播放器資訊可見，確認實際使用 AVPlayer。宿主可能忽略提示或回退 ME，僅更新成功不代表已切換核心。此版尚未完成 Apple TV 實機驗證，不宣稱已解決卡頓。需要回退時可手動安裝保留的 `dist/binance-1.2.7.zip`。
+
 這個專案包含四個獨立的 AngelLive 原生插件包：
 
 - `binance`：Binance Square Live
@@ -128,7 +130,7 @@ node tests/twitch-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.7.zip
+dist/binance-1.2.8.zip
 dist/okx-1.2.6.zip
 dist/youtube-tw-1.0.0.zip
 dist/twitch-live-1.0.0.zip

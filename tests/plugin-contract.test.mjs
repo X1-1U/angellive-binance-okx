@@ -162,6 +162,15 @@ const binanceFavoritePlayback = await binance.plugin.getPlayback({
 });
 assert.equal(binanceFavoritePlayback[0].qualitys[0].roomId, "49990000123456");
 assert.equal(binanceFavoritePlayback[0].qualitys[0].playbackHints.isLive, true);
+const binanceLiveQualities = binanceFavoritePlayback.flatMap((line) => Array.from(line.qualitys));
+assert.ok(binanceLiveQualities.some((quality) => quality.liveCodeType === "m3u8"));
+assert.ok(binanceLiveQualities.some((quality) => quality.liveCodeType === "flv"));
+for (const quality of binanceLiveQualities) {
+  assert.deepEqual(Array.from(quality.playbackHints.preferredEngines),
+    quality.liveCodeType === "flv" ? ["mePlayer"] : ["avPlayer", "mePlayer"]);
+  assert.equal(quality.playbackHints.latencyMode, "standard");
+  assert.equal(quality.playbackHints.isLive, true);
+}
 const binanceFavoriteDanmaku = await binance.plugin.getDanmaku({
   roomId: "39715484101961",
   userId: "fixture-square-uid"
