@@ -1,5 +1,7 @@
 # Binance + OKX + YouTube + Twitch Live for AngelLive
 
+2026-10-02 Binance 1.2.9 穩定性更新：聊天請求偶發失敗時不再中斷彈幕並自動退避（3→最長 30 秒）；聊天室改用 zh-TW 並優先顯示原文；修正無序號訊息與首幀前舊訊息重複顯示；彈幕時鐘 WebSocket 改用 `stream.binance.com:443`；收藏的原房間正在直播時直接使用，不再每次掃描整份目錄；分享連結只接受 `binance.com` 網域。播放設定（含 1.2.8 的 AVPlayer 優先）不變。
+
 2026-09-26 Binance 1.2.8 播放對照測試：直播 HLS 優先使用 AVPlayer，ME 作備援。FLV、回放、目錄、彈幕及其他平台不變。刷新訂閱並更新插件後，退出直播間再選 HLS，連續觀看至少 10 分鐘；若播放器資訊可見，確認實際使用 AVPlayer。宿主可能忽略提示或回退 ME，僅更新成功不代表已切換核心。此版尚未完成 Apple TV 實機驗證，不宣稱已解決卡頓。需要回退時可手動安裝保留的 `dist/binance-1.2.7.zip`。
 
 這個專案包含四個獨立的 AngelLive 原生插件包：
@@ -91,7 +93,7 @@ Binance 1.2.7／OKX 1.2.6：請求語系優先 `zh-TW`，其次 `zh-CN`。Binanc
 | 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
 | AngelLive 原生播放 | HLS／FLV 直播、HLS／MP4 回放 | HLS／FLV、多畫質、雙 CDN |
 | 分享連結解析 | 支援 Square audio、replay、audiospace、uni-qr | 支援 stream-room `shareCode` |
-| 彈幕／聊天 | 公開 WebSocket 驅動聊天室每 3 秒增量更新 | 匿名 WebSocket 即時聊天及最近歷史 |
+| 彈幕／聊天 | 公開 WebSocket 驅動聊天室每 3 秒增量更新，失敗自動退避 | 匿名 WebSocket 即時聊天及最近歷史 |
 
 OKX 的官方直播狀態、聊天與 Web 平台播放資訊都可以透過臨時匿名 token 讀取。本插件只把實際 HLS／FLV 媒體地址交給 AngelLive，不會把官方網頁 URL 偽裝成直播串流。
 
@@ -130,7 +132,7 @@ node tests/twitch-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.8.zip
+dist/binance-1.2.9.zip
 dist/okx-1.2.6.zip
 dist/youtube-tw-1.0.0.zip
 dist/twitch-live-1.0.0.zip

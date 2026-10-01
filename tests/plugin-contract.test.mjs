@@ -185,7 +185,7 @@ assert.deepEqual(JSON.parse(binance.requests[0].request.body), { pageIndex: 1, p
 assert.equal(binance.requests.some((item) => item.request.url.includes("feed-recommend/list")), true);
 const binanceDanmaku = await binance.plugin.getDanmaku({ roomId: "49990000123456" });
 assert.equal(binanceDanmaku.transport.kind, "websocket");
-assert.equal(binanceDanmaku.transport.url, "wss://stream.binance.com:9443/ws");
+assert.equal(binanceDanmaku.transport.url, "wss://stream.binance.com:443/ws");
 assert.equal(binanceDanmaku.transport.frameType, "text");
 assert.equal(binanceDanmaku.runtime.driver, "plugin_js_v1");
 assert.equal(binanceDanmaku.runtime.webSocketHeaderMode, "minimal_no_cookie");
@@ -222,6 +222,67 @@ assert.equal(
   true
 );
 assert.equal((await binance.plugin.destroyDanmakuSession({ connectionId: "fixture-connection" })).ok, true);
+
+// 聊天失敗不拋錯並退避；無 seqId 訊息不重播；優先原文；code "0" 視為成功。
+const resilientChat = [
+  new Error("network down"),
+  { code: "0", success: true, data: { liveRoomChatMessage: [
+    { squareUid: "u1", content: "原文留言", translatedContent: "translated", displayName: "甲" },
+    { squareUid: "u2", content: "第二條", displayName: "乙" }
+  ] } },
+  new Error("rate limited"),
+  { code: "000000", success: true, data: { liveRoomChatMessage: [
+    { squareUid: "u0", content: "更早的新留言", displayName: "丙" },
+    { squareUid: "u1", content: "原文留言", translatedContent: "translated", displayName: "甲" },
+    { squareUid: "u2", content: "第二條", displayName: "乙" }
+  ] } }
+];
+const resilientRequests = [];
+const resilient = await loadPlugin("binance", async (input) => {
+  const url = input.request.url;
+  resilientRequests.push(url);
+  if (url.includes("get-live-room-chat-message")) {
+    const next = resilientChat.shift();
+    if (next instanceof Error) throw next;
+    return next;
+  }
+  if (url.includes("room-detail")) return binanceLiveDetail;
+  throw new Error(`Unexpected Binance URL: ${url}`);
+});
+const resilientSession = await resilient.plugin.createDanmakuSession({
+  connectionId: "resilient",
+  roomId: "49990000123456"
+});
+assert.equal(resilientSession.ok, true);
+assert.equal(resilientSession.messages.length, 0);
+assert.equal((await resilient.plugin.onDanmakuOpen({ connectionId: "resilient" })).timer.intervalMs, 6000);
+const resilientFirst = await resilient.plugin.onDanmakuTick({ connectionId: "resilient" });
+assert.deepEqual(Array.from(resilientFirst.messages, (item) => item.text), ["原文留言", "第二條"]);
+assert.equal(resilientFirst.timer.intervalMs, 3000);
+const resilientFailed = await resilient.plugin.onDanmakuTick({ connectionId: "resilient" });
+assert.equal(resilientFailed.messages.length, 0);
+assert.equal(resilientFailed.timer.intervalMs, 6000);
+const resilientShifted = await resilient.plugin.onDanmakuTick({ connectionId: "resilient" });
+assert.deepEqual(Array.from(resilientShifted.messages, (item) => item.text), ["更早的新留言"]);
+
+// 收藏的原房間正在直播時，不應觸發目錄掃描。
+resilientRequests.length = 0;
+assert.equal((await resilient.plugin.getLiveState({
+  roomId: "49990000123456",
+  userId: "fixture-square-uid"
+})).liveState, "1");
+assert.equal(resilientRequests.some((url) => url.includes("feed")), false);
+
+// 分享連結只接受真正的 binance.com 網域。
+await assert.rejects(
+  resilient.plugin.resolveShare({ shareCode: "https://evil.example/?next=binance.com" }),
+  (error) => error.code === "PARSE"
+);
+await assert.rejects(
+  resilient.plugin.resolveShare({ shareCode: "https://binance.com@evil.example/live" }),
+  (error) => error.code === "PARSE"
+);
+assert.equal(resilientRequests.some((url) => url.includes("evil.example")), false);
 
 const okxList = await fixture("okx-live-list.json");
 const okxToken = await fixture("okx-anonymous-token.json");
