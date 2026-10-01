@@ -10,8 +10,11 @@ const _bn_roomPageSize = 50;
 const _bn_cacheTTL = 30 * 1000;
 const _bn_discoveryTTL = 6 * 60 * 60 * 1000;
 const _bn_staleValidationLimit = 20;
+const _bn_validationConcurrency = 5;
 const _bn_danmakuIntervalMs = 3000;
-const _bn_danmakuClockURL = "wss://stream.binance.com:9443/ws";
+const _bn_danmakuMaxIntervalMs = 30000;
+// 443 比 9443 更不容易被公司／公共網路防火牆攔截；Binance 官方同時提供兩個端口。
+const _bn_danmakuClockURL = "wss://stream.binance.com:443/ws";
 const _bn_runtime = {
   liveList: [],
   liveListFetchedAt: 0,
@@ -373,14 +376,19 @@ async function _bn_revalidateRemembered(currentItems, now) {
     return !currentIds[id];
   }).slice(0, _bn_staleValidationLimit);
 
-  const checked = await Promise.all(candidates.map(async function (id) {
-    try {
-      const detail = await _bn_fetchRoomDetail(id);
-      return _bn_liveState(detail, false) === "1" ? detail : null;
-    } catch (_) {
-      return null;
-    }
-  }));
+  // 分批校驗，避免一次並發 20 個 room-detail 請求觸發限流。
+  const checked = [];
+  for (let offset = 0; offset < candidates.length; offset += _bn_validationConcurrency) {
+    const batch = await Promise.all(candidates.slice(offset, offset + _bn_validationConcurrency).map(async function (id) {
+      try {
+        const detail = await _bn_fetchRoomDetail(id);
+        return _bn_liveState(detail, false) === "1" ? detail : null;
+      } catch (_) {
+        return null;
+      }
+    }));
+    checked.push.apply(checked, batch);
+  }
   for (let index = 0; index < candidates.length; index += 1) {
     const id = candidates[index];
     const detail = checked[index];
@@ -568,6 +576,16 @@ async function _bn_findCurrentLiveByUser(userId) {
 
 async function _bn_resolveCurrentTarget(roomId, userId) {
   const originalRoomId = _bn_parseRoomId(roomId);
+  let originalDetail = null;
+  // 原房間正在直播時直接使用，避免收藏刷新每次都觸發整份目錄掃描。
+  if (originalRoomId) {
+    try {
+      originalDetail = await _bn_detailWithFallback(originalRoomId);
+      if (_bn_liveState(originalDetail, false) === "1") {
+        return { roomId: originalRoomId, detail: originalDetail };
+      }
+    } catch (_) {}
+  }
   try {
     const current = await _bn_findCurrentLiveByUser(userId);
     const currentRoomId = _bn_pickId(current);
@@ -590,7 +608,7 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
   }
   return {
     roomId: originalRoomId,
-    detail: await _bn_detailWithFallback(originalRoomId)
+    detail: originalDetail || (await _bn_detailWithFallback(originalRoomId))
   };
 }
 
@@ -638,16 +656,8 @@ function _bn_chatHeaders(roomId) {
   return {
     Accept: "application/json, text/plain, */*",
     clienttype: "web",
-    lang: "en",
-    Referer: `${_bn_baseURL}/en/square/audio?id=${encodeURIComponent(roomId)}`
-  };
-}
-
-function _bn_chatPoll(roomId) {
-  return {
-    url: `${_bn_chatURL(roomId)}&_=${Date.now()}`,
-    method: "GET",
-    headers: _bn_chatHeaders(roomId)
+    lang: "zh-TW",
+    Referer: `${_bn_baseURL}/zh-TW/square/audio?id=${encodeURIComponent(roomId)}`
   };
 }
 
@@ -657,7 +667,28 @@ async function _bn_fetchChatMessages(session) {
     method: "GET",
     headers: _bn_chatHeaders(session.roomId)
   });
-  return _bn_chatMessages(session, JSON.stringify(parsed));
+  return _bn_chatMessages(session, parsed);
+}
+
+// 聊天請求偶發失敗（網路抖動、429、WAF）時不拋錯，保留會話並以指數退避重試，
+// 避免宿主因一次錯誤關閉整條彈幕連線。
+async function _bn_pollChat(session) {
+  try {
+    const messages = await _bn_fetchChatMessages(session);
+    session.failures = 0;
+    return messages;
+  } catch (_) {
+    session.failures = (session.failures || 0) + 1;
+    return [];
+  }
+}
+
+function _bn_danmakuTimer(session) {
+  const failures = Math.min(_bn_num(session && session.failures, 0), 4);
+  return {
+    mode: "heartbeat",
+    intervalMs: Math.min(_bn_danmakuIntervalMs * Math.pow(2, failures), _bn_danmakuMaxIntervalMs)
+  };
 }
 
 function _bn_danmakuSession(payload) {
@@ -665,16 +696,15 @@ function _bn_danmakuSession(payload) {
   return _bn_runtime.danmakuSessions[_bn_str(runtimePayload.connectionId)] || null;
 }
 
-function _bn_chatMessages(session, response) {
-  const parsed = _bn_parseJSON(response);
-  if (!parsed || typeof parsed !== "object") {
-    _bn_throw("INVALID_RESPONSE", "Binance chat returned invalid JSON", {});
-  }
-  if (parsed.success === false || (_bn_str(parsed.code) && _bn_str(parsed.code) !== "000000")) {
-    _bn_throw("UPSTREAM", _bn_message(parsed), { code: _bn_str(parsed.code) });
-  }
+function _bn_chatKey(item) {
+  const seq = _bn_str(item.seqId);
+  if (seq) return seq;
+  // 不能含列表索引：輪詢窗口滑動後索引會改變，會把舊訊息當成新訊息重複顯示。
+  return [_bn_str(item.squareUid || item.username), _bn_str(item.content), _bn_str(item.createTime || item.time)].join(":");
+}
 
-  const data = _bn_object(parsed.data);
+function _bn_chatMessages(session, parsed) {
+  const data = _bn_object(_bn_object(parsed).data);
   const list = Array.isArray(data.liveRoomChatMessage) ? data.liveRoomChatMessage.slice() : [];
   list.sort(function (left, right) {
     const leftSeq = _bn_str(left && left.seqId);
@@ -688,16 +718,17 @@ function _bn_chatMessages(session, response) {
   const firstFrame = !session.initialized;
   const startIndex = firstFrame ? Math.max(0, list.length - 20) : 0;
   const messages = [];
+  const currentKeys = [];
   for (let index = 0; index < list.length; index += 1) {
     const item = _bn_object(list[index]);
-    const seq = _bn_str(item.seqId);
-    const key = seq
-      ? seq
-      : [_bn_str(item.squareUid), _bn_str(item.content), _bn_str(index)].join(":");
+    const key = _bn_chatKey(item);
+    currentKeys.push(key);
     if (index < startIndex || session.seen[key]) {
+      if (index < startIndex) session.seen[key] = true;
       continue;
     }
-    const text = _bn_str(item.translatedContent || item.content).trim();
+    // 優先顯示原文；translatedContent 只在原文缺失時作備援，避免中文留言被機翻成其他語言。
+    const text = _bn_str(item.content || item.translatedContent).trim();
     if (!text) continue;
     session.seen[key] = true;
     messages.push({
@@ -709,13 +740,22 @@ function _bn_chatMessages(session, response) {
   session.initialized = true;
   const keys = Object.keys(session.seen);
   if (keys.length > 500) {
+    // 裁剪時保留本次回應中的所有鍵，否則下一輪仍在窗口內的舊訊息會重播。
     const keep = {};
+    for (const key of currentKeys) keep[key] = true;
     for (let index = Math.max(0, keys.length - 300); index < keys.length; index += 1) {
       keep[keys[index]] = true;
     }
     session.seen = keep;
   }
   return messages;
+}
+
+function _bn_isBinanceURL(value) {
+  const match = _bn_str(value).match(/^https?:\/\/([^/?#:@]+)(?::\d+)?(?:[/?#]|$)/i);
+  if (!match) return false;
+  const host = match[1].toLowerCase();
+  return host === "binance.com" || /\.binance\.com$/.test(host);
 }
 
 async function _bn_resolveRoomFromShare(shareCode) {
@@ -739,7 +779,7 @@ async function _bn_resolveRoomFromShare(shareCode) {
   }
 
   const source = _bn_str(shareCode).trim();
-  if (/^https?:\/\//i.test(source) && /binance\.com/i.test(source)) {
+  if (_bn_isBinanceURL(source)) {
     const response = await _bn_http({
       url: source,
       headers: { Accept: "text/html,application/xhtml+xml" }
@@ -750,10 +790,12 @@ async function _bn_resolveRoomFromShare(shareCode) {
       _bn_rememberLiveItems([detail]);
       return detail;
     }
+    // 只認明確的直播連結或 contentId 欄位；泛用的 "id" 很容易抓到頁面上無關的數字。
     const html = _bn_str(response.bodyText);
-    const match = html.match(/(?:contentId|\"id\")\D{0,24}(\d{6,})/i);
-    if (match && match[1]) {
-      const detail = await _bn_detailWithFallback(match[1]);
+    const match = html.match(/"contentId"\s*:\s*"?(\d{6,})/i);
+    const htmlId = _bn_parseRoomId(html) || (match && match[1]) || "";
+    if (htmlId) {
+      const detail = await _bn_detailWithFallback(htmlId);
       _bn_rememberLiveItems([detail]);
       return detail;
     }
@@ -918,12 +960,13 @@ globalThis.LiveParsePlugin = {
     const session = {
       roomId: roomId,
       initialized: false,
+      failures: 0,
       seen: {}
     };
     _bn_runtime.danmakuSessions[connectionId] = session;
     return {
       ok: true,
-      messages: await _bn_fetchChatMessages(session)
+      messages: await _bn_pollChat(session)
     };
   },
 
@@ -932,7 +975,7 @@ globalThis.LiveParsePlugin = {
     if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
     return {
       ok: true,
-      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
+      timer: _bn_danmakuTimer(session)
     };
   },
 
@@ -941,8 +984,8 @@ globalThis.LiveParsePlugin = {
     if (!session) _bn_throw("INVALID_ARGS", "Unknown danmaku session", {});
     return {
       ok: true,
-      messages: await _bn_fetchChatMessages(session),
-      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
+      messages: await _bn_pollChat(session),
+      timer: _bn_danmakuTimer(session)
     };
   },
 
@@ -953,7 +996,7 @@ globalThis.LiveParsePlugin = {
     return {
       ok: true,
       messages: [],
-      timer: { mode: "heartbeat", intervalMs: _bn_danmakuIntervalMs }
+      timer: _bn_danmakuTimer(session)
     };
   },
 
