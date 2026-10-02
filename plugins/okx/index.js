@@ -478,8 +478,8 @@ function _ok_playbackGroups(roomId, playbackInfo) {
       },
       playbackHints: {
         streamFormat: protocol === "flv" ? "flv" : "hlsLive",
-        latencyMode: "normal",
-        preferredEngines: protocol === "flv" ? ["ijk", "mpv"] : ["avplayer", "mpv"],
+        latencyMode: "standard",
+        preferredEngines: protocol === "flv" ? ["mePlayer"] : ["avPlayer", "mePlayer"],
         isLive: true,
         requiresCustomSegmentLoader: false,
         selectionBehavior: "direct",

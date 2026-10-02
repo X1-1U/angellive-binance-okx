@@ -338,6 +338,14 @@ const okxPlayback = await okx.plugin.getPlayback({ roomId: "fixtureShareCode-1" 
 assert.equal(okxPlayback.length, 2);
 assert.equal(okxPlayback[0].qualitys[0].liveCodeType, "m3u8");
 assert.equal(okxPlayback[0].qualitys.some((item) => item.liveCodeType === "flv"), true);
+for (const line of okxPlayback) {
+  for (const quality of line.qualitys) {
+    assert.equal(quality.playbackHints.latencyMode, "standard");
+    assert.deepEqual(Array.from(quality.playbackHints.preferredEngines),
+      quality.liveCodeType === "flv" ? ["mePlayer"] : ["avPlayer", "mePlayer"]);
+    assert.equal(quality.playbackHints.isLive, true);
+  }
+}
 const okxInfoRequest = okx.requests.find((item) => item.request.url.includes("/livestream/v1/info?"));
 assert.equal(okxInfoRequest.request.headers.Platform, "web");
 assert.equal(okxInfoRequest.request.headers["im-token"], "fixture-im-token");

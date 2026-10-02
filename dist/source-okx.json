@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-01T18:18:39Z",
+  "generatedAt": "2026-10-02T12:07:14Z",
   "sourceName": "OKX Orbit Live for AngelLive",
   "plugins": [
     {
       "pluginId": "okx",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.6.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.7.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.6.zip",
-      "sha256": "e10ce362461b0a643c219ae34792b852f6b3da76443096dad88eb5d1ce8cdf06",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.7.zip",
+      "sha256": "d0b957d3d36a1b30597230c1a14da2a70c721362a04792585930a4c5488edae0",
       "changelog": [
+        "1.2.7：修正播放提示為官方支援的 standard、avPlayer／mePlayer；HLS 優先 AVPlayer、ME 備援，FLV 使用 ME；不更動彈幕及目錄，流暢度仍需裝置實測",
         "1.2.6：API 請求加入繁體中文優先語系，維持直播目錄熱度排序；不改動播放與彈幕",
         "1.2.5：補齊主目錄分頁並保留交叉取樣；按觀眾數降序展示，修正零值與千位分隔符；限制並行請求，目錄快取縮短為 30 秒",
         "1.2.4：收藏改以穩定主播 ID 識別；主播開始新場次時自動更新為目前直播房間，播放與彈幕不再查詢上一場 shareCode",

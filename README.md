@@ -1,5 +1,11 @@
 # Binance + OKX + YouTube + Twitch Live for AngelLive
 
+2026-10-02 OKX 1.2.7 HLS 相容性更新：播放提示改為官方契約的 `latencyMode: standard`，HLS 優先 `avPlayer`、備援 `mePlayer`，FLV 使用 `mePlayer`，取代舊的 `normal/avplayer/mpv/ijk` 值。Binance 1.2.9 已使用相同 HLS 核心順序，本輪不改其播放或彈幕。這是核心選擇修正，不是保證消除所有卡頓；Apple TV 2.0.0（24）尚未實機驗證。
+
+本輪上游採樣：Binance 房間 `46616480023866` 共 12 次清單／分片採樣，12 個不同序號、0 次失敗，窗口約 2.885–2.973 秒；不等同連續解碼測試。OKX 在播放解析階段回報 `INVALID_RESPONSE`，未進入 HLS 分片檢查，不能宣稱 OKX 實網流暢度通過。兩平台與 YouTube／Twitch 契約測試及打包校驗通過。
+
+HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mjs okx`，可附加房間 ID 與採樣次數（預設 12，間隔 10 秒）。檢查清單序號、可用窗口及最新完整分片下載；不保存影音、不輸出簽名 URL。每次 curl 為新連線，下載時間不能等同播放器持續吞吐量或使用者家中網路；此檢查也不驗證解碼、音畫同步或實機緩衝。HLS 緩衝策略由宿主控制，不偽造上游清單或不存在的 buffer 參數。更新後選 HLS 連續觀看 10 分鐘，若能查看核心資訊，確認為 AVPlayer；仍卡頓時記錄核心、清晰度、發生時間再比較，避免把格式切換當成核心切換。
+
 2026-10-02 Binance 1.2.9 穩定性更新：聊天請求偶發失敗時不再中斷彈幕並自動退避（3→最長 30 秒）；聊天室改用 zh-TW 並優先顯示原文；修正無序號訊息與首幀前舊訊息重複顯示；彈幕時鐘 WebSocket 改用 `stream.binance.com:443`；收藏的原房間正在直播時直接使用，不再每次掃描整份目錄；分享連結只接受 `binance.com` 網域。播放設定（含 1.2.8 的 AVPlayer 優先）不變。
 
 2026-09-26 Binance 1.2.8 播放對照測試：直播 HLS 優先使用 AVPlayer，ME 作備援。FLV、回放、目錄、彈幕及其他平台不變。刷新訂閱並更新插件後，退出直播間再選 HLS，連續觀看至少 10 分鐘；若播放器資訊可見，確認實際使用 AVPlayer。宿主可能忽略提示或回退 ME，僅更新成功不代表已切換核心。此版尚未完成 Apple TV 實機驗證，不宣稱已解決卡頓。需要回退時可手動安裝保留的 `dist/binance-1.2.7.zip`。
@@ -133,7 +139,7 @@ node tests/twitch-contract.test.mjs
 
 ```text
 dist/binance-1.2.9.zip
-dist/okx-1.2.6.zip
+dist/okx-1.2.7.zip
 dist/youtube-tw-1.0.0.zip
 dist/twitch-live-1.0.0.zip
 dist/source.json
