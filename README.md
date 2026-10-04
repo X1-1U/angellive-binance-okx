@@ -6,6 +6,10 @@
 
 HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mjs okx`，可附加房間 ID 與採樣次數（預設 12，間隔 10 秒）。檢查清單序號、可用窗口及最新完整分片下載；不保存影音、不輸出簽名 URL。每次 curl 為新連線，下載時間不能等同播放器持續吞吐量或使用者家中網路；此檢查也不驗證解碼、音畫同步或實機緩衝。HLS 緩衝策略由宿主控制，不偽造上游清單或不存在的 buffer 參數。更新後選 HLS 連續觀看 10 分鐘，若能查看核心資訊，確認為 AVPlayer；仍卡頓時記錄核心、清晰度、發生時間再比較，避免把格式切換當成核心切換。
 
+2026-10-05 Binance 1.2.10：直播預設改用 FLV，HLS 降為備用。實測 Binance 直播 HLS 清單固定只有 3 個約 1 秒的分片（`TARGETDURATION:1`，窗口不足 3 秒，遠低於 HLS 建議的 6 個分片），播放器沒有緩衝餘量，網路稍有抖動就掉出窗口，這是 AVPlayer 與 ME 都會週期性卡頓的原因，插件無法改變上游清單。同一房間的 FLV 連續 20 秒下載穩定約 1.9 Mbps。此結論來自接口實測，尚未在 Apple TV 實機驗證 FLV 的觀感。
+
+2026-10-05 Twitch 1.1.0：預設目錄改為 Twitch 全站熱門（不限語言／地區），中文直播保留為第二分類。
+
 2026-10-02 Binance 1.2.9 穩定性更新：聊天請求偶發失敗時不再中斷彈幕並自動退避（3→最長 30 秒）；聊天室改用 zh-TW 並優先顯示原文；修正無序號訊息與首幀前舊訊息重複顯示；彈幕時鐘 WebSocket 改用 `stream.binance.com:443`；收藏的原房間正在直播時直接使用，不再每次掃描整份目錄；分享連結只接受 `binance.com` 網域。播放設定（含 1.2.8 的 AVPlayer 優先）不變。
 
 2026-09-26 Binance 1.2.8 播放對照測試：直播 HLS 優先使用 AVPlayer，ME 作備援。FLV、回放、目錄、彈幕及其他平台不變。刷新訂閱並更新插件後，退出直播間再選 HLS，連續觀看至少 10 分鐘；若播放器資訊可見，確認實際使用 AVPlayer。宿主可能忽略提示或回退 ME，僅更新成功不代表已切換核心。此版尚未完成 Apple TV 實機驗證，不宣稱已解決卡頓。需要回退時可手動安裝保留的 `dist/binance-1.2.7.zip`。
@@ -15,7 +19,7 @@ HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mj
 - `binance`：Binance Square Live
 - `okx`：OKX Orbit Live
 - `youtube-tw`：YouTube 台灣直播（免登入實驗版）
-- `twitch-live`：Twitch 中文／全球直播與匿名聊天室（免登入實驗版）
+- `twitch-live`：Twitch 全站熱門直播（另有中文分類）與匿名聊天室（免登入實驗版）
 
 皆使用 `globalThis.LiveParsePlugin` API v1，不是瀏覽器擴充套件，也不是 Codex 插件。
 
@@ -67,7 +71,7 @@ node scripts/smoke-youtube.mjs VIDEO_ID
 https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/source-twitch-live.json
 ```
 
-- 預設中文熱門，另有全球熱門；每類最多讀取 4 頁、120 個直播頻道，去重後按在線觀眾數排序，目錄快取 60 秒。中文語言篩選不等於台灣所在地，也不是全站完整目錄。
+- 預設為 Twitch 全站熱門（不限語言與地區），另有中文直播分類；每類最多讀取 4 頁、120 個直播頻道，去重後按在線觀眾數排序，目錄快取 60 秒。中文語言篩選不等於台灣所在地，也不是全站完整目錄。
 - 2026-09-18 實測中文首頁返回 29 間，第二頁被 Twitch `IntegrityCheckFailed` 拒絕；插件保留已取得的首頁，不繞過驗證。可用頻道搜尋或分享地址補充目錄外主播。
 - 搜尋支援中文顯示名稱及英文帳號，取官方搜尋首批結果；分享添加使用 `https://www.twitch.tv/帳號`。可收藏未開播的頻道，之後依同一頻道更新直播狀態；頻道改名需重新添加。不支援回放與剪輯。
 - 免登入取得公開 HLS，提供自動畫質及官方回傳的各解析度／僅音訊。**保留官方廣告，不跳過廣告，也不保證無廣告等待畫面**；會員專屬、地區限制或匿名播放被拒絕的房間不支援。
@@ -97,7 +101,7 @@ Binance 1.2.7／OKX 1.2.6：請求語系優先 `zh-TW`，其次 `zh-CN`。Binanc
 | 直播目錄 | 多入口合併、近期房間狀態校驗 | 多分頁切片取樣、近期房間狀態校驗 |
 | 房間搜尋 | 目前直播；URL／內容 ID | 目前直播；分享碼／URL |
 | 房間詳情與狀態 | 支援 | 匿名狀態 API；離線保留基本資料 |
-| AngelLive 原生播放 | HLS／FLV 直播、HLS／MP4 回放 | HLS／FLV、多畫質、雙 CDN |
+| AngelLive 原生播放 | FLV 直播（預設）／HLS 備用、HLS／MP4 回放 | HLS／FLV、多畫質、雙 CDN |
 | 分享連結解析 | 支援 Square audio、replay、audiospace、uni-qr | 支援 stream-room `shareCode` |
 | 彈幕／聊天 | 公開 WebSocket 驅動聊天室每 3 秒增量更新，失敗自動退避 | 匿名 WebSocket 即時聊天及最近歷史 |
 
@@ -138,10 +142,10 @@ node tests/twitch-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.9.zip
+dist/binance-1.2.10.zip
 dist/okx-1.2.7.zip
 dist/youtube-tw-1.0.0.zip
-dist/twitch-live-1.0.0.zip
+dist/twitch-live-1.1.0.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json

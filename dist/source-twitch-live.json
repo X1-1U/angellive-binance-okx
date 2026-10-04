@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-01T18:18:39Z",
+  "generatedAt": "2026-10-04T18:01:48Z",
   "sourceName": "twitch-live for AngelLive",
   "plugins": [
     {
       "pluginId": "twitch-live",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "platform": "twitch-live",
       "platformName": "twitch-live",
-      "platformDescription": "Twitch 中文／全球熱門直播與匿名唯讀聊天室（非官方實驗版）",
+      "platformDescription": "Twitch 全站熱門直播（另有中文分類）與匿名唯讀聊天室（非官方實驗版）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.0.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.1.0.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.0.0.zip",
-      "sha256": "08d6909ad0e0f6e9739dca507d382bd9cbb5c5956dd9f54c1b74fcaa6ae6a393",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.1.0.zip",
+      "sha256": "af3cc0c63c6304a4bb5a1a707dcc009c9d3d6926db17b5049cfe643fde4c1c20",
       "changelog": [
+        "1.1.0：預設目錄改為 Twitch 全站熱門直播，不再限定中文／台灣；中文直播保留為第二個分類；播放與彈幕不變",
         "1.0.0：中文／全球熱門目錄、頻道搜尋與收藏狀態、HLS 多畫質、匿名即時彈幕；不改動其他平台"
       ],
       "auth": {
@@ -31,7 +32,7 @@
         },
         "rooms": {
           "status": "partial",
-          "reason": "中文與全球熱門按在線人數排序；最多掃描 4 頁，但匿名分頁可能被驗證限制而只顯示首頁；中文不代表台灣地理位置"
+          "reason": "預設為 Twitch 全站熱門（不限語言與地區），另有中文分類，按在線人數排序；最多掃描 4 頁，但匿名分頁可能被驗證限制而只顯示首頁；中文不代表台灣地理位置"
         },
         "search": {
           "status": "partial",

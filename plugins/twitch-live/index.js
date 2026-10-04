@@ -20,7 +20,7 @@ function _tw_requireLogin(value) { const login = _tw_login(value); if (!login) _
 async function _tw_http(url, body) {
   const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
     url: url, method: body === undefined ? "GET" : "POST", timeout: 20,
-    headers: Object.assign({"User-Agent": _tw_ua, "Accept-Language": "zh-TW,zh;q=0.9"}, body === undefined ? {} : {"Client-ID": _tw_client, "Content-Type": "application/json", Origin: "https://www.twitch.tv", Referer: "https://www.twitch.tv/"}),
+    headers: Object.assign({"User-Agent": _tw_ua, "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8"}, body === undefined ? {} : {"Client-ID": _tw_client, "Content-Type": "application/json", Origin: "https://www.twitch.tv", Referer: "https://www.twitch.tv/"}),
     body: body === undefined ? null : JSON.stringify(body)
   }});
   if (!r || r.status < 200 || r.status >= 300) _tw_fail(r && r.status === 429 ? "RATE_LIMITED" : r && (r.status === 401 || r.status === 403) ? "BLOCKED" : "NETWORK", "Twitch 請求失敗（HTTP " + (r && r.status) + "），可能受地區或匿名存取限制");
@@ -44,7 +44,7 @@ async function _tw_user(login) {
   return data.user;
 }
 async function _tw_directory(category) {
-  const key = category === "global" ? "global" : "zh";
+  const key = category === "zh" ? "zh" : "global";
   if (_tw_cache[key] && Date.now() - _tw_cache[key].at < 60000) return _tw_cache[key].rooms.slice();
   if (_tw_pending[key]) return (await _tw_pending[key]).slice();
   _tw_pending[key] = (async function () {
@@ -92,7 +92,7 @@ function _tw_timer() { return {mode:"heartbeat",intervalMs:15000}; }
 function _tw_session(p) { const s=_tw_sessions[_tw_str(p.connectionId)];if(!s)_tw_fail("INVALID_ARGS","Twitch 彈幕連線已失效");return s; }
 globalThis.LiveParsePlugin = {
   apiVersion:1,
-  async getCategories(){return [{id:"root",title:"Twitch Live",icon:"",biz:"",subList:[{id:"zh",parentId:"root",title:"中文熱門",icon:"",biz:""},{id:"global",parentId:"root",title:"全球熱門",icon:"",biz:""}]}];},
+  async getCategories(){return [{id:"root",title:"Twitch Live",icon:"",biz:"",subList:[{id:"global",parentId:"root",title:"熱門直播",icon:"",biz:""},{id:"zh",parentId:"root",title:"中文直播",icon:"",biz:""}]}];},
   async getRooms(payload){const p=payload||{},rooms=await _tw_directory(p.id),start=(Math.max(1,Number(p.page)||1)-1)*30;return rooms.slice(start,start+30);},
   async getRoomDetail(payload){return _tw_room(await _tw_user(_tw_requireLogin(payload.roomId)));},
   async getLiveState(payload){return (await _tw_user(_tw_requireLogin(payload.roomId))).stream?"1":"0";},

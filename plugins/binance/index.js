@@ -851,8 +851,10 @@ globalThis.LiveParsePlugin = {
 
     if (state === "1") {
       const play = _bn_pickPlayURLs(detail);
-      _bn_addQuality(qualities, seen, play.hls, "HLS 原畫", 10000, "m3u8", true, roomId);
-      _bn_addQuality(qualities, seen, play.flv, "FLV 原畫", 9000, "flv", true, roomId);
+      // Binance 的直播 HLS 清單只有 3 個約 1 秒的分片（窗口不足 3 秒），播放器幾乎沒有緩衝餘量，
+      // 網路稍有抖動就會掉出窗口而卡頓；FLV 是連續串流，沒有這個問題，因此作為預設。
+      _bn_addQuality(qualities, seen, play.flv, "FLV 原畫（推薦）", 10000, "flv", true, roomId);
+      _bn_addQuality(qualities, seen, play.hls, "HLS 原畫（備用，可能卡頓）", 9000, "m3u8", true, roomId);
     } else if (state === "2") {
       const replayURL = _bn_pickReplayURL(detail);
       if (/\.m3u8(?:[?#]|$)/i.test(replayURL)) {

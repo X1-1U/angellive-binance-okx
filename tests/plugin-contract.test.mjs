@@ -162,6 +162,7 @@ const binanceFavoritePlayback = await binance.plugin.getPlayback({
 });
 assert.equal(binanceFavoritePlayback[0].qualitys[0].roomId, "49990000123456");
 assert.equal(binanceFavoritePlayback[0].qualitys[0].playbackHints.isLive, true);
+assert.equal(binanceFavoritePlayback[0].qualitys[0].liveCodeType, "flv", "live playback defaults to FLV");
 const binanceLiveQualities = binanceFavoritePlayback.flatMap((line) => Array.from(line.qualitys));
 assert.ok(binanceLiveQualities.some((quality) => quality.liveCodeType === "m3u8"));
 assert.ok(binanceLiveQualities.some((quality) => quality.liveCodeType === "flv"));

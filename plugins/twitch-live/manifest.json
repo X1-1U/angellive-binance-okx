@@ -1,19 +1,19 @@
 {
-  "pluginId": "twitch-live", "version": "1.0.0", "apiVersion": 1,
+  "pluginId": "twitch-live", "version": "1.1.0", "apiVersion": 1,
   "displayName": "twitch-live",
-  "platformDescription": "Twitch 中文／全球熱門直播與匿名唯讀聊天室（非官方實驗版）",
+  "platformDescription": "Twitch 全站熱門直播（另有中文分類）與匿名唯讀聊天室（非官方實驗版）",
   "liveTypes": ["twitch-live"], "entry": "index.js",
   "auth": {"required": false, "credentialKinds": [], "supportsStatusCheck": false, "supportsValidation": false},
   "capabilities": {
     "categories": {"status": "available"},
-    "rooms": {"status": "partial", "reason": "中文與全球熱門按在線人數排序；最多掃描 4 頁，但匿名分頁可能被驗證限制而只顯示首頁；中文不代表台灣地理位置"},
+    "rooms": {"status": "partial", "reason": "預設為 Twitch 全站熱門（不限語言與地區），另有中文分類，按在線人數排序；最多掃描 4 頁，但匿名分頁可能被驗證限制而只顯示首頁；中文不代表台灣地理位置"},
     "search": {"status": "partial", "reason": "官方中文／英文頻道搜尋首批結果；也可輸入完整頻道帳號或分享連結"},
     "roomDetail": {"status": "available"}, "liveState": {"status": "available"},
     "playback": {"status": "partial", "reason": "公開 HLS 多畫質；保留官方廣告；登入、訂閱及地區限制不支援"},
     "shareResolve": {"status": "partial", "reason": "支援 Twitch 頻道網址及頻道英文帳號，不支援回放／剪輯"},
     "danmaku": {"status": "partial", "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史"}
   },
-  "changelog": ["1.0.0：中文／全球熱門目錄、頻道搜尋與收藏狀態、HLS 多畫質、匿名即時彈幕；不改動其他平台"],
+  "changelog": ["1.1.0：預設目錄改為 Twitch 全站熱門直播，不再限定中文／台灣；中文直播保留為第二個分類；播放與彈幕不變", "1.0.0：中文／全球熱門目錄、頻道搜尋與收藏狀態、HLS 多畫質、匿名即時彈幕；不改動其他平台"],
   "shareResolve": {"hosts": ["twitch.tv", "www.twitch.tv", "m.twitch.tv"], "keywords": ["twitch"]},
   "hostBehavior": {"favoriteIdentityKey": "userId", "externalRoomURLTemplate": "https://www.twitch.tv/{roomId}", "themeColor": "#9146FF", "playableLiveStates": ["1"]}
 }

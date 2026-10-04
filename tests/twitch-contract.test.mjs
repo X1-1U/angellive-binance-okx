@@ -21,13 +21,13 @@ const c=vm.createContext({Date:Clock,Host:{raise(code,message){const e=new Error
 }}}});
 vm.runInContext(await fs.readFile(new URL('../plugins/twitch-live/index.js',import.meta.url),'utf8'),c);
 const p=c.LiveParsePlugin;
-assert.equal((await p.getCategories())[0].subList[0].id,'zh');
+assert.equal((await p.getCategories())[0].subList[0].id,'global');
 const [a,b]=await Promise.all([p.getRooms({id:'zh',page:1}),p.getRooms({id:'zh',page:1})]);
 assert.equal(a.length,2);assert.equal(b[0].roomId,'hot');assert.equal(a[0].liveType,'twitch-live');assert.equal(pageCalls,2);
-assert.equal((await p.getRooms({page:2})).length,0);
+assert.equal((await p.getRooms({id:'zh',page:2})).length,0);
 now+=61000;denyNextPage=true;const limited=await p.getRooms({id:'zh'});assert.equal(limited.length,1,'keep valid first page if anonymous continuation is denied');denyNextPage=false;
 assert.ok(requests.some(r=>r.request.body?.includes('languages:[ZH]')));
-await p.getRooms({id:'global'});assert.equal(pageCalls,5);
+requests.length=0;await p.getRooms({});assert.equal(pageCalls,5);assert.ok(requests.every(r=>!r.request.body.includes('languages')),'default directory is not language restricted');await p.getRooms({id:'global'});assert.equal(pageCalls,5,'default and global share one cache');
 assert.equal((await p.search({keyword:'中文'})).length,1);
 assert.equal((await p.resolveShare({shareCode:'https://www.twitch.tv/HOT?ref=test'})).roomId,'hot');
 for(const input of ['https://twitch.tv.evil.invalid/hot','hot\r\nJOIN #bad','https://twitch.tv/videos/123','https://twitch.tv/hot/clip/123'])await assert.rejects(p.resolveShare({shareCode:input}),{code:'INVALID_ARGS'});
@@ -54,4 +54,4 @@ await p.destroyDanmakuSession({connectionId:'c'});await assert.rejects(p.onDanma
 await p.createDanmakuSession({connectionId:'c',roomId:'hot'});now+=46000;await assert.rejects(p.onDanmakuTick({connectionId:'c'}),{code:'NETWORK'});
 await assert.rejects(frame(':tmi.twitch.tv NOTICE * :Login authentication failed\r\n'),{code:'BLOCKED'});
 assert.ok(requests.every(r=>r.authMode==='none'&&r.platformId==='twitch-live'));
-console.log('twitch contract: OK (pagination, Chinese discovery, playback, state, IRC tags/fragmentation/dedupe/keepalive/reconnect)');
+console.log('twitch contract: OK (pagination, global default + Chinese discovery, playback, state, IRC tags/fragmentation/dedupe/keepalive/reconnect)');
