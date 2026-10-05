@@ -1,25 +1,28 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-05T10:37:49.407Z",
+  "generatedAt": "2026-10-05T12:08:03Z",
   "sourceName": "twitch-live 測試版本 for AngelLive",
   "plugins": [
     {
       "pluginId": "twitch-live-test",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "platform": "twitch-live-test",
       "platformName": "twitch-live 測試版本",
-      "platformDescription": "Twitch 官方遊戲／內容分類與匿名唯讀聊天室（非官方實驗版）",
+      "platformDescription": "Twitch 測試版：標題與聊天室翻譯成繁體中文、支援宿主即時字幕的播放線路（非官方實驗版）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.1.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.1.0.zip",
-      "sha256": "73618a85f6cfecc97fa171b702e1a158cea045df3a818eaf9ae1964bf3e80756",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip",
+      "sha256": "56ef3eea6245f5bc9f3cca78064dd19b7b9e4de5b05a31f2d70d8c0275df1d8f",
       "changelog": [
+        "0.2.0：房間標題與聊天室翻譯成繁體中文，使用自架的 Gemini 翻譯服務；不需在 AngelLive 內做任何設定，插件不含密碼；只傳送標題與聊天文字、不含暱稱，失敗或被限流時顯示原文；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕",
         "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"
       ],
       "auth": {
         "required": false,
-        "credentialKinds": [],
+        "credentialKinds": [
+
+        ],
         "supportsStatusCheck": false,
         "supportsValidation": false
       },
@@ -43,7 +46,7 @@
         },
         "playback": {
           "status": "partial",
-          "reason": "開播時比較 site／embed 官方 HLS 入口，優先抽樣未見廣告標記者；不保證無廣告，不跳過中途廣告，不刪除分片，不使用第三方代理"
+          "reason": "開播時比較 site／embed 官方 HLS 入口，優先抽樣未見廣告標記者；不保證無廣告，不跳過中途廣告，不刪除分片，不使用第三方代理；單一畫質優先 KSME 內核以配合宿主即時字幕，自動畫質不支援字幕"
         },
         "shareResolve": {
           "status": "partial",
@@ -51,7 +54,7 @@
         },
         "danmaku": {
           "status": "partial",
-          "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史"
+          "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史；自然語句經自架 Gemini 翻譯服務轉成 zh-TW（有數秒延遲，失敗或被限流時顯示原文）"
         }
       },
       "icon": "assets/live_card_twitch-live-test.png",

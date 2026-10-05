@@ -52,7 +52,7 @@ async function _tw_categories() {
     let after = "";
     for (let page = 0; page < 3; page++) {
       let data;
-      try { data = await _tw_gql("{games(first:100" + (after ? ",after:" + JSON.stringify(after) : "") + "){edges{cursor node{id name boxArtURL(width:144,height:192)}} pageInfo{hasNextPage}}}"); }
+      try { data = await _tw_gql("{games(first:100" + (after ? ",after:" + JSON.stringify(after) : "") + "){edges{cursor node{id name displayName boxArtURL(width:144,height:192)}} pageInfo{hasNextPage}}}"); }
       catch (error) { if (!items.length) throw error; break; }
       const connection = data.games;
       if (!connection || !Array.isArray(connection.edges)) _tw_fail("UPSTREAM", "Twitch 分類格式已變更");
@@ -60,7 +60,7 @@ async function _tw_categories() {
         const game = edge.node;
         if (!game || !/^\d+$/.test(_tw_str(game.id)) || seen[game.id]) continue;
         seen[game.id] = true;
-        items.push({id:_tw_str(game.id),parentId:"root",title:_tw_str(game.name),icon:_tw_str(game.boxArtURL),biz:""});
+        items.push({id:_tw_str(game.id),parentId:"root",title:_tw_str(game.displayName||game.name),icon:_tw_str(game.boxArtURL),biz:""});
       }
       const last = connection.edges[connection.edges.length - 1];
       if (!(connection.pageInfo || {}).hasNextPage || !last || !last.cursor || cursors[last.cursor]) break;
@@ -103,7 +103,7 @@ async function _tw_directory(category) {
   try { return (await _tw_pending[key]).slice(); } finally { delete _tw_pending[key]; }
 }
 function _tw_media(url) { return /^https:\/\/[a-z0-9.-]+\.(?:ttvnw\.net|twitchcdn\.net|live-video\.net|cloudfront\.net)\//i.test(_tw_str(url)); }
-function _tw_quality(login,url,title,qn) { return {roomId:login,title:title,qn:qn,url:url,liveCodeType:"m3u8",liveType:_tw_id,userAgent:_tw_ua,headers:{"User-Agent":_tw_ua},playbackHints:{streamFormat:"hlsLive",latencyMode:"standard",preferredEngines:["avPlayer","mePlayer"],isLive:true,requiresCustomSegmentLoader:false,selectionBehavior:"direct",startPositionSeconds:0}}; }
+function _tw_quality(login,url,title,qn,engines) { return {roomId:login,title:title,qn:qn,url:url,liveCodeType:"m3u8",liveType:_tw_id,userAgent:_tw_ua,headers:{"User-Agent":_tw_ua},playbackHints:{streamFormat:"hlsLive",latencyMode:"standard",preferredEngines:engines||["avPlayer","mePlayer"],isLive:true,requiresCustomSegmentLoader:false,selectionBehavior:"direct",startPositionSeconds:0}}; }
 function _tw_tag(value) { return _tw_str(value).replace(/\\([s:nr\\])/g,function (_,c) { return {s:" ", ":":";", n:"\n", r:"\r", "\\":"\\"}[c]; }); }
 function _tw_parse(line) {
   const tags = Object.create(null);
@@ -145,13 +145,14 @@ globalThis.LiveParsePlugin = {
     const token=data.streamPlaybackAccessToken;if(!token||!token.value||!token.signature)_tw_fail("BLOCKED","Twitch 未提供匿名播放授權，可能需要登入或有地區限制");
     const url="https://usher.ttvnw.net/api/channel/hls/"+login+".m3u8?allow_source=true&allow_audio_only=true&sig="+encodeURIComponent(token.signature)+"&token="+encodeURIComponent(token.value);
     const manifest=await _tw_http(url);if(!manifest.trim().startsWith("#EXTM3U"))_tw_fail("UPSTREAM","Twitch HLS 清單無效");
-    const qualities=[_tw_quality(login,url,"HLS 自動畫質",100000)],lines=manifest.split(/\r?\n/),seen=Object.create(null);
+    const qualities=[_tw_quality(login,url,"HLS 自動畫質（不支援即時字幕）",1)],lines=manifest.split(/\r?\n/),seen=Object.create(null);
     for(let i=0;i<lines.length-1;i++){
       if(!lines[i].startsWith("#EXT-X-STREAM-INF:"))continue;
       const media=lines[i+1].trim();if(!_tw_media(media)||seen[media])continue;seen[media]=true;
       const res=lines[i].match(/RESOLUTION=\d+x(\d+)/),fps=lines[i].match(/FRAME-RATE=([\d.]+)/),height=res?Number(res[1]):0;
       const title=height?"HLS "+height+"p"+(fps&&Number(fps[1])>30?"60":""):"僅音訊";
-      qualities.push(_tw_quality(login,media,title,height*10+(fps?Math.round(Number(fps[1])):0)));
+      // 宿主的即時語音字幕只接在 KSME（mePlayer）內核上；單一畫質清單用 FFmpeg 起播也不會逐檔探測。
+      qualities.push(_tw_quality(login,media,title,height?height*10+(fps?Math.round(Number(fps[1])):0):0,["mePlayer","avPlayer"]));
     }
     qualities.sort(function(a,b){return b.qn-a.qn;});return [{cdn:"Twitch",displayName:"Twitch 官方 HLS（含官方廣告）",requestContext:{roomId:login},qualitys:qualities}];
   },
@@ -185,7 +186,7 @@ const _tw_basePlayback = LiveParsePlugin.getPlayback;
 async function _tw_probeCandidate(payload, type) {
   const groups = await _tw_basePlayback(Object.assign({}, payload, {_testPlayerType:type}));
   const group = groups[0];
-  const sample = group.qualitys.find(function(q){return q.title.indexOf("480p") >= 0;}) || group.qualitys[1];
+  const sample = group.qualitys.find(function(q){return q.title.indexOf("480p") >= 0;}) || group.qualitys.find(function(q){return q.url.indexOf("https://usher.ttvnw.net/") !== 0;});
   let status = "unknown";
   if (sample) {
     try {
@@ -212,4 +213,111 @@ LiveParsePlugin.getPlayback = async function(payload) {
   const rank = {unmarked:0,unknown:1,ad:2};
   available.sort(function(a,b){return rank[a.status]-rank[b.status] || (a.type === "site" ? -1 : 1);});
   return available.map(function(item){return item.group;});
+};
+
+// ---- zh-TW 翻譯（測試功能）----
+// 後端是自架的 Gemini 翻譯服務的公開路徑：存取密碼由伺服器端的 nginx 代為附加並限流，插件不帶任何密碼。
+const _tw_trURL = "https://dmiteb.zzmzx325vip.top:3002/ai-translator-tw/translate";
+const _tw_trChunk = 20;
+const _tw_trCache = Object.create(null), _tw_trOrder = [];
+let _tw_trPausedUntil = 0, _tw_trFailures = 0;
+function _tw_trRemember(text, value) {
+  if (!(text in _tw_trCache)) _tw_trOrder.push(text);
+  _tw_trCache[text] = value;
+  while (_tw_trOrder.length > 600) delete _tw_trCache[_tw_trOrder.shift()];
+}
+// 只翻譯看起來是自然語句的文字：略過指令、純表情／全大寫洗版、過短內容，節省翻譯額度。
+function _tw_translatable(text) {
+  const plain = _tw_str(text).replace(/https?:\/\/\S+/g, " ").replace(/@\w+/g, " ").trim();
+  if (!plain || plain[0] === "!" || plain.length > 300) return false;
+  if (/[\u3040-\u30ff\uac00-\ud7af]/.test(plain)) return true;
+  if (/[\u4e00-\u9fff]/.test(plain)) return (plain.match(/[\u4e00-\u9fff]/g) || []).length >= 2;
+  const words = plain.split(/\s+/).filter(function (word) { return /[a-z\u00df-\u024f\u0400-\u04ff]{2,}/.test(word); });
+  return words.length >= 3;
+}
+async function _tw_trRequest(texts, timeout) {
+  const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
+    url: _tw_trURL, method: "POST", timeout: timeout,
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({texts: texts})
+  }});
+  const status = r ? Number(r.status) : 0;
+  if (status !== 200) { const error = new Error("translate http " + status); error.status = status; throw error; }
+  const parsed = JSON.parse(_tw_str(r.bodyText)), rows = Array.isArray(parsed) ? parsed : parsed.translations;
+  if (!Array.isArray(rows) || rows.length !== texts.length) throw new Error("translate shape");
+  return rows;
+}
+// 批次翻譯。回傳與輸入等長的陣列，無法翻譯者為原文。
+async function _tw_translateBatch(texts, timeout) {
+  const output = texts.slice(), need = [];
+  for (let i = 0; i < texts.length; i++) {
+    if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
+    else if (_tw_translatable(texts[i]) && need.indexOf(texts[i]) < 0) need.push(texts[i]);
+  }
+  if (!need.length || Date.now() < _tw_trPausedUntil) return output;
+  const chunks = [];
+  for (let i = 0; i < need.length; i += _tw_trChunk) chunks.push(need.slice(i, i + _tw_trChunk));
+  // 各批獨立結算：一批失敗（例如 Gemini 偶發回應格式不符）不影響其他批的結果。
+  const results = await Promise.all(chunks.map(async function (chunk) {
+    try { return await _tw_trRequest(chunk, timeout || 12); } catch (_) { return null; }
+  }));
+  let succeeded = 0;
+  chunks.forEach(function (chunk, c) {
+    if (!results[c]) return;
+    succeeded += 1;
+    chunk.forEach(function (text, i) { _tw_trRemember(text, _tw_str(results[c][i]).trim() || text); });
+  });
+  if (succeeded) _tw_trFailures = 0;
+  else {
+    // 全部失敗（被限流或服務異常）才暫停翻譯：30 秒起逐次加倍，最長 10 分鐘。期間顯示原文。
+    _tw_trFailures += 1;
+    _tw_trPausedUntil = Date.now() + Math.min(30000 * Math.pow(2, _tw_trFailures - 1), 600000);
+  }
+  for (let i = 0; i < texts.length; i++) if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
+  return output;
+}
+async function _tw_translateRooms(rooms) {
+  const titles = await _tw_translateBatch(rooms.map(function (room) { return room.roomTitle; }));
+  return rooms.map(function (room, index) { return Object.assign({}, room, {roomTitle: titles[index] || room.roomTitle}); });
+}
+for (const name of ["getRooms", "search"]) {
+  const base = LiveParsePlugin[name];
+  LiveParsePlugin[name] = async function (payload) { return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
+}
+for (const name of ["getRoomDetail", "resolveShare"]) {
+  const base = LiveParsePlugin[name];
+  LiveParsePlugin[name] = async function (payload) { return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
+}
+
+// 聊天翻譯：frame 回調不等待網路，待翻譯訊息先排隊，由每秒一次的 tick 批次翻譯後送出（延遲取決於翻譯服務，通常數秒）。
+const _tw_trBatchSize = 20, _tw_trQueueLimit = 36;
+function _tw_trTimer() { return {mode:"heartbeat",intervalMs:1000}; }
+const _tw_baseFrame = LiveParsePlugin.onDanmakuFrame, _tw_baseTick = LiveParsePlugin.onDanmakuTick, _tw_baseOpen = LiveParsePlugin.onDanmakuOpen;
+LiveParsePlugin.onDanmakuOpen = async function (payload) {
+  const result = await _tw_baseOpen.call(LiveParsePlugin, payload), s = _tw_session(payload);
+  s.queue = []; s.lastPing = Date.now(); result.timer = _tw_trTimer(); return result;
+};
+LiveParsePlugin.onDanmakuFrame = async function (payload) {
+  const result = await _tw_baseFrame.call(LiveParsePlugin, payload), s = _tw_session(payload), now = [];
+  if (!s.queue) s.queue = [];
+  const paused = Date.now() < _tw_trPausedUntil;
+  for (const message of result.messages || []) {
+    if (message.text in _tw_trCache) now.push(Object.assign({}, message, {text: _tw_trCache[message.text]}));
+    else if (!paused && _tw_translatable(message.text)) s.queue.push(message);
+    else now.push(message);
+  }
+  // 聊天過快時，超出上限的最舊訊息直接以原文送出，不讓佇列無限延遲。
+  while (s.queue.length > _tw_trQueueLimit) now.push(s.queue.shift());
+  result.messages = now; result.timer = _tw_trTimer(); return result;
+};
+LiveParsePlugin.onDanmakuTick = async function (payload) {
+  const s = _tw_session(payload);
+  if (!s.queue) s.queue = [];
+  let result = {ok:true,writes:[]};
+  // 原本每 15 秒一次的保活與逾時檢查維持不變，只是改由 1 秒 tick 計數觸發。
+  if (Date.now() - (s.lastPing || 0) >= 15000) { result = await _tw_baseTick.call(LiveParsePlugin, payload); s.lastPing = Date.now(); }
+  const batch = s.queue.splice(0, _tw_trBatchSize);
+  const texts = batch.length ? await _tw_translateBatch(batch.map(function (message) { return message.text; }), 8) : [];
+  result.messages = batch.map(function (message, index) { return Object.assign({}, message, {text: texts[index] || message.text}); });
+  result.timer = _tw_trTimer(); return result;
 };

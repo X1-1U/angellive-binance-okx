@@ -135,6 +135,7 @@ SOURCE_URL="https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/d
 node tests/plugin-contract.test.mjs
 node tests/youtube-contract.test.mjs
 node tests/twitch-contract.test.mjs
+node tests/twitch-test-contract.test.mjs
 ```
 
 `node` 只用於 mock 契約測試；打包本身只需要 macOS 的 Swift、Ruby 與 `/usr/bin/zip`。
