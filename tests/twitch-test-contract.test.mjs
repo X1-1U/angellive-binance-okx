@@ -6,6 +6,7 @@ let now = 100000;
 class Clock extends Date { static now() { return now; } }
 const requests = [];
 let translateStatus = 200, translateCalls = 0;
+const TRANSLATOR = 'https://dmiteb.zzmzx325vip.top:3002/ai-translator/translate', TOKEN = 'fixture-token';
 const dictionary = {
   'Ranked grind to the top today': '今天衝排名',
   'that was an insane play lol': '那一波太誇張了',
@@ -18,11 +19,13 @@ const context = vm.createContext({Date: Clock, Host: {
   http: {async request(input) {
     requests.push(input);
     const {url, body} = input.request;
-    if (url.startsWith('https://translate.googleapis.com/')) {
+    if (url === TRANSLATOR) {
       translateCalls++;
+      if (input.request.headers.Authorization !== 'Bearer ' + TOKEN) return {status: 401, bodyText: '{"error":"bad"}'};
       if (translateStatus !== 200) return {status: translateStatus, bodyText: ''};
-      const texts = body.split('&').map((pair) => decodeURIComponent(pair.slice(2)));
-      return {status: 200, bodyText: JSON.stringify(texts.map((text) => [dictionary[text] || text, 'en']))};
+      const {texts} = JSON.parse(body);
+      assert.ok(texts.length >= 1 && texts.length <= 20, 'service accepts at most 20 texts');
+      return {status: 200, bodyText: JSON.stringify({translations: texts.map((text) => dictionary[text] || text)})};
     }
     if (url.startsWith('https://usher.ttvnw.net/')) return {status: 200, bodyText: '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=10,RESOLUTION=1920x1080,FRAME-RATE=60\nhttps://video.ttvnw.net/full.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://video.ttvnw.net/audio.m3u8\n'};
     if (url.startsWith('https://video.ttvnw.net/')) return {status: 200, bodyText: '#EXTM3U\n#EXTINF:2.0,\nseg.ts\n'};
@@ -40,8 +43,18 @@ const p = context.LiveParsePlugin;
 
 // 分類使用 Twitch 官方在地化名稱；房間標題翻譯成 zh-TW 並快取。
 assert.equal((await p.getCategories())[0].subList[0].title, '純聊天');
-assert.equal((await p.getRooms({id: '509658'}))[0].roomTitle, '今天衝排名');
-assert.equal((await p.getRoomDetail({roomId: 'hot'})).roomTitle, '今天衝排名');
+// 未填密碼：不呼叫翻譯服務，顯示原文。
+assert.equal((await p.getRooms({id: '509658'}))[0].roomTitle, 'Ranked grind to the top today');
+assert.equal(translateCalls, 0, 'no token means no translation requests');
+// 密碼驗證：正確、錯誤、未填。
+assert.equal((await p.validateCredential({apiToken: 'Bearer ' + TOKEN})).state, 'valid');
+assert.equal((await p.validateCredential({apiToken: 'wrong'})).state, 'invalid');
+assert.equal((await p.getCredentialStatus({})).state, 'invalid');
+const valid = await p.validateCredential({apiToken: TOKEN});
+assert.equal(valid.credentialKind, 'token'); assert.equal(valid.authorizationType, 'api');
+translateCalls = 0;
+assert.equal((await p.getRooms({id: '509658', apiToken: TOKEN}))[0].roomTitle, '今天衝排名');
+assert.equal((await p.getRoomDetail({roomId: 'hot', apiToken: TOKEN})).roomTitle, '今天衝排名');
 assert.equal(translateCalls, 1, 'titles are cached');
 
 // 單一畫質優先 mePlayer（宿主字幕需要），自動畫質維持 AVPlayer 並排在後面。
@@ -95,6 +108,11 @@ for (let i = 0; i < 40; i++) burst += privmsg(100 + i, `brand new sentence numbe
 r = await frame(burst);
 assert.equal(r.messages.length, 4);
 assert.ok(requests.every((item) => item.authMode === 'none' && item.platformId === 'twitch-live-test'));
-const translateRequest = requests.find((item) => item.request.url.startsWith('https://translate.googleapis.com/'));
+const translateRequest = requests.find((item) => item.request.url === TRANSLATOR && item.request.body.includes('insane'));
 assert.ok(!/U1|display-name/.test(translateRequest.request.body), 'nicknames are not sent for translation');
-console.log('twitch-test contract: OK (zh-TW titles, chat translation queue/cache/backoff, subtitle-capable engine hints)');
+assert.ok(requests.every((item) => item.request.url === TRANSLATOR || !('Authorization' in (item.request.headers || {}))), 'the token is only sent to the translation service');
+// 宿主清除 Token 後（瀏覽呼叫不再帶 apiToken），聊天也停止翻譯。
+await p.getRooms({id: '509658'});
+r = await frame(privmsg(900, 'one more brand new sentence here'));
+assert.equal(r.messages[0].text, 'one more brand new sentence here');
+console.log('twitch-test contract: OK (token-gated zh-TW titles/chat, queue/cache/backoff, credential validation, subtitle-capable engine hints)');

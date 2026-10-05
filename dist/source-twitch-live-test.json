@@ -1,6 +1,6 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-05T11:55:13Z",
+  "generatedAt": "2026-10-05T12:02:53Z",
   "sourceName": "twitch-live 測試版本 for AngelLive",
   "plugins": [
     {
@@ -13,18 +13,18 @@
         "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip"
       ],
       "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip",
-      "sha256": "539573cb6aeb7d06a17b47219d459f20e3e4abacada10e9fbc1df712aa273eb9",
+      "sha256": "21f6c23068ba66aa5a8463dbc03a6323f4d3b158238cc2f4e95eb480eb92e6e1",
       "changelog": [
-        "0.2.0：房間標題與聊天室翻譯成繁體中文（Google 翻譯公開端點，會傳送標題與聊天文字、不含暱稱；失敗自動退回原文）；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕",
+        "0.2.0：房間標題與聊天室翻譯成繁體中文，使用自架的 Gemini 翻譯服務；存取密碼在 AngelLive 的平台帳號頁以 API Token 填入，不寫在插件裡，未填時顯示原文；只傳送標題與聊天文字、不含暱稱；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕",
         "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"
       ],
       "auth": {
         "required": false,
         "credentialKinds": [
-
+          "token"
         ],
-        "supportsStatusCheck": false,
-        "supportsValidation": false
+        "supportsStatusCheck": true,
+        "supportsValidation": true
       },
       "capabilities": {
         "categories": {
@@ -54,7 +54,7 @@
         },
         "danmaku": {
           "status": "partial",
-          "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史；自然語句經 Google 翻譯公開端點轉成 zh-TW（約 1–2 秒延遲，失敗顯示原文）"
+          "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史；填入翻譯服務密碼後，自然語句經自架 Gemini 翻譯服務轉成 zh-TW（有數秒延遲，失敗或未填密碼時顯示原文）"
         }
       },
       "icon": "assets/live_card_twitch-live-test.png",

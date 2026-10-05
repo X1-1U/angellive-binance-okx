@@ -3,7 +3,7 @@
   "displayName": "twitch-live 測試版本",
   "platformDescription": "Twitch 測試版：標題與聊天室翻譯成繁體中文、支援宿主即時字幕的播放線路（非官方實驗版）",
   "liveTypes": ["twitch-live-test"], "entry": "index.js",
-  "auth": {"required": false, "credentialKinds": [], "supportsStatusCheck": false, "supportsValidation": false},
+  "auth": {"required": false, "credentialKinds": ["token"], "supportsStatusCheck": true, "supportsValidation": true},
   "capabilities": {
     "categories": {"status": "available"},
     "rooms": {"status": "partial", "reason": "官方遊戲／內容分類（最多 300 類，維持接口順序），各類直播按在線人數排序；每類最多 4 頁，匿名驗證可能限制分頁；無中文獨立分類，不複製登入後個人化推薦"},
@@ -11,9 +11,9 @@
     "roomDetail": {"status": "available"}, "liveState": {"status": "available"},
     "playback": {"status": "partial", "reason": "開播時比較 site／embed 官方 HLS 入口，優先抽樣未見廣告標記者；不保證無廣告，不跳過中途廣告，不刪除分片，不使用第三方代理；單一畫質優先 KSME 內核以配合宿主即時字幕，自動畫質不支援字幕"},
     "shareResolve": {"status": "partial", "reason": "支援 Twitch 頻道網址及頻道英文帳號，不支援回放／剪輯"},
-    "danmaku": {"status": "partial", "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史；自然語句經 Google 翻譯公開端點轉成 zh-TW（約 1–2 秒延遲，失敗顯示原文）"}
+    "danmaku": {"status": "partial", "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史；填入翻譯服務密碼後，自然語句經自架 Gemini 翻譯服務轉成 zh-TW（有數秒延遲，失敗或未填密碼時顯示原文）"}
   },
-  "changelog": ["0.2.0：房間標題與聊天室翻譯成繁體中文（Google 翻譯公開端點，會傳送標題與聊天文字、不含暱稱；失敗自動退回原文）；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕", "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"],
+  "changelog": ["0.2.0：房間標題與聊天室翻譯成繁體中文，使用自架的 Gemini 翻譯服務；存取密碼在 AngelLive 的平台帳號頁以 API Token 填入，不寫在插件裡，未填時顯示原文；只傳送標題與聊天文字、不含暱稱；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕", "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"],
   "shareResolve": {"hosts": ["twitch.tv", "www.twitch.tv", "m.twitch.tv"], "keywords": ["twitch"]},
   "hostBehavior": {"favoriteIdentityKey": "userId", "externalRoomURLTemplate": "https://www.twitch.tv/{roomId}", "themeColor": "#9146FF", "playableLiveStates": ["1"]}
 }

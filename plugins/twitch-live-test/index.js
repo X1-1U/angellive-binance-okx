@@ -216,20 +216,21 @@ LiveParsePlugin.getPlayback = async function(payload) {
 };
 
 // ---- zh-TW 翻譯（測試功能）----
-// 使用 Google 翻譯的公開網頁端點，不需金鑰；會把待翻譯的標題／聊天文字（不含暱稱）送到 Google。
-// 端點非官方承諾，失敗或被限流時一律退回原文並暫停翻譯一段時間。
-const _tw_trURL = "https://translate.googleapis.com/translate_a/t?client=gtx&sl=auto&tl=zh-TW";
+// 後端是自架的 Gemini 翻譯服務。存取密碼不寫在插件裡：使用者在 AngelLive 的平台帳號頁填入 API Token，
+// 宿主只會在瀏覽類函數（分類／列表／搜尋／詳情）把它放進 payload.apiToken；沒有 Token 時一律顯示原文。
+const _tw_trURL = "https://dmiteb.zzmzx325vip.top:3002/ai-translator/translate";
+const _tw_trChunk = 20;
 const _tw_trCache = Object.create(null), _tw_trOrder = [];
-let _tw_trPausedUntil = 0, _tw_trFailures = 0;
+let _tw_trToken = "", _tw_trPausedUntil = 0, _tw_trFailures = 0;
+function _tw_trNormalizeToken(value) { return _tw_str(value).trim().replace(/^(?:bearer|oauth)\s+/i, ""); }
+// 聊天回調拿不到 apiToken，沿用同一個 runtime 最近一次瀏覽呼叫帶來的值；宿主更換或清除 Token 時會重建 runtime。
+function _tw_trAdopt(payload) { _tw_trToken = _tw_trNormalizeToken((payload || {}).apiToken); }
 function _tw_trRemember(text, value) {
   if (!(text in _tw_trCache)) _tw_trOrder.push(text);
   _tw_trCache[text] = value;
   while (_tw_trOrder.length > 600) delete _tw_trCache[_tw_trOrder.shift()];
 }
-function _tw_unescape(text) {
-  return _tw_str(text).replace(/&(amp|lt|gt|quot|#39|#x27);/g, function (_, name) { return {amp:"&",lt:"<",gt:">",quot:"\"","#39":"'","#x27":"'"}[name]; });
-}
-// 只翻譯看起來是自然語句的文字：略過指令、純表情／全大寫洗版、過短內容。
+// 只翻譯看起來是自然語句的文字：略過指令、純表情／全大寫洗版、過短內容，節省翻譯額度。
 function _tw_translatable(text) {
   const plain = _tw_str(text).replace(/https?:\/\/\S+/g, " ").replace(/@\w+/g, " ").trim();
   if (!plain || plain[0] === "!" || plain.length > 300) return false;
@@ -238,35 +239,56 @@ function _tw_translatable(text) {
   const words = plain.split(/\s+/).filter(function (word) { return /[a-z\u00df-\u024f\u0400-\u04ff]{2,}/.test(word); });
   return words.length >= 3;
 }
-// 批次翻譯；每則文字由服務各自判斷來源語言。回傳與輸入等長的陣列，無法翻譯者為原文。
-async function _tw_translateBatch(texts) {
+async function _tw_trRequest(token, texts, timeout) {
+  const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
+    url: _tw_trURL, method: "POST", timeout: timeout,
+    headers: {"Content-Type": "application/json", Authorization: "Bearer " + token},
+    body: JSON.stringify({texts: texts})
+  }});
+  const status = r ? Number(r.status) : 0;
+  if (status !== 200) { const error = new Error("translate http " + status); error.status = status; throw error; }
+  const parsed = JSON.parse(_tw_str(r.bodyText)), rows = Array.isArray(parsed) ? parsed : parsed.translations;
+  if (!Array.isArray(rows) || rows.length !== texts.length) throw new Error("translate shape");
+  return rows;
+}
+// 批次翻譯。回傳與輸入等長的陣列，無法翻譯者為原文。
+async function _tw_translateBatch(texts, timeout) {
   const output = texts.slice(), need = [];
   for (let i = 0; i < texts.length; i++) {
     if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
     else if (_tw_translatable(texts[i]) && need.indexOf(texts[i]) < 0) need.push(texts[i]);
   }
-  if (!need.length || Date.now() < _tw_trPausedUntil) return output;
+  if (!need.length || !_tw_trToken || Date.now() < _tw_trPausedUntil) return output;
   try {
-    const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
-      url: _tw_trURL, method: "POST", timeout: 5,
-      headers: {"User-Agent": _tw_ua, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
-      body: need.map(function (text) { return "q=" + encodeURIComponent(text); }).join("&")
-    }});
-    if (!r || r.status !== 200) throw new Error("translate http " + (r && r.status));
-    const rows = JSON.parse(_tw_str(r.bodyText));
-    if (!Array.isArray(rows) || rows.length !== need.length) throw new Error("translate shape");
-    for (let i = 0; i < need.length; i++) {
-      const row = rows[i], translated = _tw_unescape(Array.isArray(row) ? row[0] : row).trim();
-      _tw_trRemember(need[i], translated || need[i]);
-    }
+    const chunks = [];
+    for (let i = 0; i < need.length; i += _tw_trChunk) chunks.push(need.slice(i, i + _tw_trChunk));
+    const results = await Promise.all(chunks.map(function (chunk) { return _tw_trRequest(_tw_trToken, chunk, timeout || 12); }));
+    chunks.forEach(function (chunk, c) { chunk.forEach(function (text, i) { _tw_trRemember(text, _tw_str(results[c][i]).trim() || text); }); });
     _tw_trFailures = 0;
-  } catch (_) {
-    // 連續失敗時拉長暫停時間（30 秒起，最長 10 分鐘），期間直接顯示原文。
+  } catch (error) {
+    // 密碼錯誤直接停 10 分鐘；其他失敗 30 秒起逐次加倍，最長 10 分鐘。期間顯示原文。
     _tw_trFailures += 1;
-    _tw_trPausedUntil = Date.now() + Math.min(30000 * Math.pow(2, _tw_trFailures - 1), 600000);
+    _tw_trPausedUntil = Date.now() + (error && error.status === 401 ? 600000 : Math.min(30000 * Math.pow(2, _tw_trFailures - 1), 600000));
   }
   for (let i = 0; i < texts.length; i++) if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
   return output;
+}
+async function _tw_trStatus(payload) {
+  const token = _tw_trNormalizeToken((payload || {}).apiToken);
+  if (!token) return {state: "invalid", credentialKind: "token", authorizationType: "api", expireAt: 0, message: "尚未填入翻譯服務密碼"};
+  try {
+    await _tw_trRequest(token, ["ping"], 30);
+    return {state: "valid", credentialKind: "token", authorizationType: "api", expireAt: 0};
+  } catch (error) {
+    if (error && error.status === 401) return {state: "invalid", credentialKind: "token", authorizationType: "api", expireAt: 0, message: "翻譯服務密碼不正確"};
+    _tw_fail("NETWORK", "無法連線到翻譯服務，請稍後再試");
+  }
+}
+LiveParsePlugin.validateCredential = _tw_trStatus;
+LiveParsePlugin.getCredentialStatus = _tw_trStatus;
+for (const name of ["getCategories", "getLiveState"]) {
+  const base = LiveParsePlugin[name];
+  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return base.call(LiveParsePlugin, payload); };
 }
 async function _tw_translateRooms(rooms) {
   const titles = await _tw_translateBatch(rooms.map(function (room) { return room.roomTitle; }));
@@ -274,15 +296,15 @@ async function _tw_translateRooms(rooms) {
 }
 for (const name of ["getRooms", "search"]) {
   const base = LiveParsePlugin[name];
-  LiveParsePlugin[name] = async function (payload) { return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
+  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
 }
 for (const name of ["getRoomDetail", "resolveShare"]) {
   const base = LiveParsePlugin[name];
-  LiveParsePlugin[name] = async function (payload) { return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
+  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
 }
 
-// 聊天翻譯：frame 回調不等待網路，待翻譯訊息先排隊，由每秒一次的 tick 批次翻譯後送出（延遲約 1–2 秒）。
-const _tw_trBatchSize = 12, _tw_trQueueLimit = 36;
+// 聊天翻譯：frame 回調不等待網路，待翻譯訊息先排隊，由每秒一次的 tick 批次翻譯後送出（延遲取決於翻譯服務，通常數秒）。
+const _tw_trBatchSize = 20, _tw_trQueueLimit = 36;
 function _tw_trTimer() { return {mode:"heartbeat",intervalMs:1000}; }
 const _tw_baseFrame = LiveParsePlugin.onDanmakuFrame, _tw_baseTick = LiveParsePlugin.onDanmakuTick, _tw_baseOpen = LiveParsePlugin.onDanmakuOpen;
 LiveParsePlugin.onDanmakuOpen = async function (payload) {
@@ -292,7 +314,7 @@ LiveParsePlugin.onDanmakuOpen = async function (payload) {
 LiveParsePlugin.onDanmakuFrame = async function (payload) {
   const result = await _tw_baseFrame.call(LiveParsePlugin, payload), s = _tw_session(payload), now = [];
   if (!s.queue) s.queue = [];
-  const paused = Date.now() < _tw_trPausedUntil;
+  const paused = !_tw_trToken || Date.now() < _tw_trPausedUntil;
   for (const message of result.messages || []) {
     if (message.text in _tw_trCache) now.push(Object.assign({}, message, {text: _tw_trCache[message.text]}));
     else if (!paused && _tw_translatable(message.text)) s.queue.push(message);
@@ -309,7 +331,7 @@ LiveParsePlugin.onDanmakuTick = async function (payload) {
   // 原本每 15 秒一次的保活與逾時檢查維持不變，只是改由 1 秒 tick 計數觸發。
   if (Date.now() - (s.lastPing || 0) >= 15000) { result = await _tw_baseTick.call(LiveParsePlugin, payload); s.lastPing = Date.now(); }
   const batch = s.queue.splice(0, _tw_trBatchSize);
-  const texts = batch.length ? await _tw_translateBatch(batch.map(function (message) { return message.text; })) : [];
+  const texts = batch.length ? await _tw_translateBatch(batch.map(function (message) { return message.text; }), 8) : [];
   result.messages = batch.map(function (message, index) { return Object.assign({}, message, {text: texts[index] || message.text}); });
   result.timer = _tw_trTimer(); return result;
 };
