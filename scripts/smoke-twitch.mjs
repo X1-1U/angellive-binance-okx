@@ -15,9 +15,11 @@ async function http({request}){
 const c=vm.createContext({Host:{http:{request:http},raise(code,message){throw new Error(`${code}: ${message}`);}}});
 vm.runInContext(await fs.readFile(new URL('../plugins/twitch-live/index.js',import.meta.url),'utf8'),c);
 const p=c.LiveParsePlugin;
-const rooms=await p.getRooms({id:'zh',page:1});assert.ok(rooms.length);
+const categories=await p.getCategories();
+const category=categories[0].subList[0];
+const rooms=await p.getRooms({id:category.id,page:1});assert.ok(rooms.length);
 assert.ok(rooms.every((r,i)=>!i||Number(rooms[i-1].liveWatchedCount)>=Number(r.liveWatchedCount)));
-console.log('Chinese directory',rooms.length,'first page',rooms.slice(0,3).map(r=>({login:r.roomId,viewers:r.liveWatchedCount})));
+console.log('Official category',category.title,rooms.length,'first page',rooms.slice(0,3).map(r=>({login:r.roomId,viewers:r.liveWatchedCount})));
 const login=process.argv[2]||rooms[0].roomId;
 const groups=await p.getPlayback({roomId:login});
 console.log('playback',login,groups[0].qualitys.map(q=>q.title));

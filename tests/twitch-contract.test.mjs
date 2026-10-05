@@ -13,7 +13,8 @@ const c=vm.createContext({Date:Clock,Host:{raise(code,message){const e=new Error
   if(url.startsWith('https://usher.ttvnw.net/'))return {status:200,bodyText:invalidManifest?'invalid':'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=10,RESOLUTION=1920x1080,FRAME-RATE=60\nhttps://video.ttvnw.net/full.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://video.ttvnw.net/audio.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://evil.invalid/fake.m3u8\n'};
   const {query,variables}=JSON.parse(body);let data;
   if(denyNextPage&&query.includes('after:'))return {status:200,bodyText:JSON.stringify({errors:[{message:'failed integrity check',extensions:{code:'IntegrityCheckFailed'}}]})};
-  if(query.includes('streams(first')){pageCalls++;const later=query.includes('after:');const u=user(later?'hot':'cool',later?2000:100);data={streams:{edges:[{cursor:later?'last':'next',node:{...u.stream,broadcaster:u}}],pageInfo:{hasNextPage:!later}}};}
+  if(query.includes('games(first'))data={games:{edges:[{cursor:'category',node:{id:'509658',name:'Just Chatting',boxArtURL:'https://static-cdn.jtvnw.net/category.jpg'}},{cursor:'category2',node:{id:'21779',name:'League of Legends'}}],pageInfo:{hasNextPage:false}}};
+  else if(query.includes('streams(first')){pageCalls++;const later=query.includes('after:');const u=user(later?'hot':'cool',later?2000:100);data={game:{streams:{edges:[{cursor:later?'last':'next',node:{...u.stream,broadcaster:u}}],pageInfo:{hasNextPage:!later}}}};}
   else if(query.includes('streamPlaybackAccessToken'))data={streamPlaybackAccessToken:tokenMissing?null:{value:'{"allowed":true}',signature:'sig'}};
   else if(query.includes('searchFor'))data={searchFor:{channels:{edges:[{item:user('hot',2000)},{item:{...user('offline',0),stream:null}}]}}};
   else data={user:variables.login==='missing'?null:user(variables.login,100)};
@@ -21,13 +22,20 @@ const c=vm.createContext({Date:Clock,Host:{raise(code,message){const e=new Error
 }}}});
 vm.runInContext(await fs.readFile(new URL('../plugins/twitch-live/index.js',import.meta.url),'utf8'),c);
 const p=c.LiveParsePlugin;
-assert.equal((await p.getCategories())[0].subList[0].id,'global');
+const categories=(await p.getCategories())[0].subList;
+assert.equal(categories[0].id,'509658');
+assert.equal(categories[1].title,'League of Legends');
+assert.ok(categories.every(x=>x.id!=='zh'&&x.id!=='global'));
 const [a,b]=await Promise.all([p.getRooms({id:'zh',page:1}),p.getRooms({id:'zh',page:1})]);
 assert.equal(a.length,2);assert.equal(b[0].roomId,'hot');assert.equal(a[0].liveType,'twitch-live');assert.equal(pageCalls,2);
 assert.equal((await p.getRooms({id:'zh',page:2})).length,0);
 now+=61000;denyNextPage=true;const limited=await p.getRooms({id:'zh'});assert.equal(limited.length,1,'keep valid first page if anonymous continuation is denied');denyNextPage=false;
-assert.ok(requests.some(r=>r.request.body?.includes('languages:[ZH]')));
-requests.length=0;await p.getRooms({});assert.equal(pageCalls,5);assert.ok(requests.every(r=>!r.request.body.includes('languages')),'default directory is not language restricted');await p.getRooms({id:'global'});assert.equal(pageCalls,5,'default and global share one cache');
+assert.ok(requests.every(r=>!r.request.body?.includes('languages:')));
+assert.ok(requests.some(r=>r.request.body?.includes('game(id:')));
+requests.length=0;await p.getRooms({});assert.equal(pageCalls,3);await p.getRooms({id:'global'});assert.equal(pageCalls,3,'legacy category uses first official category');
+await p.getRooms({id:'21779'});assert.equal(pageCalls,5,'each official category has separate cache');
+assert.ok(requests.some(r=>JSON.parse(r.request.body).query.includes('game(id:"21779")')));
+await assert.rejects(p.getRooms({id:'bad-category'}),{code:'INVALID_ARGS'});
 assert.equal((await p.search({keyword:'中文'})).length,1);
 assert.equal((await p.resolveShare({shareCode:'https://www.twitch.tv/HOT?ref=test'})).roomId,'hot');
 for(const input of ['https://twitch.tv.evil.invalid/hot','hot\r\nJOIN #bad','https://twitch.tv/videos/123','https://twitch.tv/hot/clip/123'])await assert.rejects(p.resolveShare({shareCode:input}),{code:'INVALID_ARGS'});
@@ -54,4 +62,4 @@ await p.destroyDanmakuSession({connectionId:'c'});await assert.rejects(p.onDanma
 await p.createDanmakuSession({connectionId:'c',roomId:'hot'});now+=46000;await assert.rejects(p.onDanmakuTick({connectionId:'c'}),{code:'NETWORK'});
 await assert.rejects(frame(':tmi.twitch.tv NOTICE * :Login authentication failed\r\n'),{code:'BLOCKED'});
 assert.ok(requests.every(r=>r.authMode==='none'&&r.platformId==='twitch-live'));
-console.log('twitch contract: OK (pagination, global default + Chinese discovery, playback, state, IRC tags/fragmentation/dedupe/keepalive/reconnect)');
+console.log('twitch contract: OK (official categories, category cache, pagination, playback, state, IRC)');

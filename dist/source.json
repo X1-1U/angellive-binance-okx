@@ -1,6 +1,6 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-04T18:01:48Z",
+  "generatedAt": "2026-10-05T10:08:10Z",
   "sourceName": "Binance + OKX + YouTube + Twitch Live for AngelLive",
   "plugins": [
     {
@@ -204,16 +204,17 @@
     },
     {
       "pluginId": "twitch-live",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "platform": "twitch-live",
       "platformName": "twitch-live",
-      "platformDescription": "Twitch 全站熱門直播（另有中文分類）與匿名唯讀聊天室（非官方實驗版）",
+      "platformDescription": "Twitch 官方遊戲／內容分類與匿名唯讀聊天室（非官方實驗版）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.1.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.2.0.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.1.0.zip",
-      "sha256": "af3cc0c63c6304a4bb5a1a707dcc009c9d3d6926db17b5049cfe643fde4c1c20",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-1.2.0.zip",
+      "sha256": "258f2b2ad1fbfddfec2b8443305591e64dcf1a9f5482ffcae09ecc5a26fb5483",
       "changelog": [
+        "1.2.0：改用官方遊戲／內容分類，移除全站熱門及中文獨立分類；分類內列出對應直播，播放與彈幕不變",
         "1.1.0：預設目錄改為 Twitch 全站熱門直播，不再限定中文／台灣；中文直播保留為第二個分類；播放與彈幕不變",
         "1.0.0：中文／全球熱門目錄、頻道搜尋與收藏狀態、HLS 多畫質、匿名即時彈幕；不改動其他平台"
       ],
@@ -231,7 +232,7 @@
         },
         "rooms": {
           "status": "partial",
-          "reason": "預設為 Twitch 全站熱門（不限語言與地區），另有中文分類，按在線人數排序；最多掃描 4 頁，但匿名分頁可能被驗證限制而只顯示首頁；中文不代表台灣地理位置"
+          "reason": "官方遊戲／內容分類（最多 300 類，維持接口順序），各類直播按在線人數排序；每類最多 4 頁，匿名驗證可能限制分頁；無中文獨立分類，不複製登入後個人化推薦"
         },
         "search": {
           "status": "partial",

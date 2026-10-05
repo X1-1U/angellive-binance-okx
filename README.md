@@ -8,7 +8,7 @@ HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mj
 
 2026-10-05 Binance 1.2.10：直播預設改用 FLV，HLS 降為備用。實測 Binance 直播 HLS 清單固定只有 3 個約 1 秒的分片（`TARGETDURATION:1`，窗口不足 3 秒，遠低於 HLS 建議的 6 個分片），播放器沒有緩衝餘量，網路稍有抖動就掉出窗口，這是 AVPlayer 與 ME 都會週期性卡頓的原因，插件無法改變上游清單。同一房間的 FLV 連續 20 秒下載穩定約 1.9 Mbps。此結論來自接口實測，尚未在 Apple TV 實機驗證 FLV 的觀感。
 
-2026-10-05 Twitch 1.1.0：預設目錄改為 Twitch 全站熱門（不限語言／地區），中文直播保留為第二分類。
+2026-10-05 Twitch 1.2.0：改用官方遊戲／內容分類，移除全站熱門及中文獨立分類；播放與彈幕不變。
 
 2026-10-02 Binance 1.2.9 穩定性更新：聊天請求偶發失敗時不再中斷彈幕並自動退避（3→最長 30 秒）；聊天室改用 zh-TW 並優先顯示原文；修正無序號訊息與首幀前舊訊息重複顯示；彈幕時鐘 WebSocket 改用 `stream.binance.com:443`；收藏的原房間正在直播時直接使用，不再每次掃描整份目錄；分享連結只接受 `binance.com` 網域。播放設定（含 1.2.8 的 AVPlayer 優先）不變。
 
@@ -19,7 +19,7 @@ HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mj
 - `binance`：Binance Square Live
 - `okx`：OKX Orbit Live
 - `youtube-tw`：YouTube 台灣直播（免登入實驗版）
-- `twitch-live`：Twitch 全站熱門直播（另有中文分類）與匿名聊天室（免登入實驗版）
+- `twitch-live`：Twitch 官方遊戲／內容分類與匿名聊天室（免登入實驗版）
 
 皆使用 `globalThis.LiveParsePlugin` API v1，不是瀏覽器擴充套件，也不是 Codex 插件。
 
@@ -71,7 +71,7 @@ node scripts/smoke-youtube.mjs VIDEO_ID
 https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/source-twitch-live.json
 ```
 
-- 預設為 Twitch 全站熱門（不限語言與地區），另有中文直播分類；每類最多讀取 4 頁、120 個直播頻道，去重後按在線觀眾數排序，目錄快取 60 秒。中文語言篩選不等於台灣所在地，也不是全站完整目錄。
+- 使用官方 games 接口返回的遊戲／內容分類，維持接口順序，最多 3 頁、300 類，快取 5 分鐘；每類最多讀取 4 頁、120 個直播頻道，去重後按在線觀眾數排序，房間快取 60 秒。沒有全站熱門或中文獨立分類，不複製登入帳號的個人化推薦；匿名分頁驗證可能使分類或直播數少於上限。
 - 2026-09-18 實測中文首頁返回 29 間，第二頁被 Twitch `IntegrityCheckFailed` 拒絕；插件保留已取得的首頁，不繞過驗證。可用頻道搜尋或分享地址補充目錄外主播。
 - 搜尋支援中文顯示名稱及英文帳號，取官方搜尋首批結果；分享添加使用 `https://www.twitch.tv/帳號`。可收藏未開播的頻道，之後依同一頻道更新直播狀態；頻道改名需重新添加。不支援回放與剪輯。
 - 免登入取得公開 HLS，提供自動畫質及官方回傳的各解析度／僅音訊。**保留官方廣告，不跳過廣告，也不保證無廣告等待畫面**；會員專屬、地區限制或匿名播放被拒絕的房間不支援。
@@ -145,7 +145,7 @@ node tests/twitch-contract.test.mjs
 dist/binance-1.2.10.zip
 dist/okx-1.2.7.zip
 dist/youtube-tw-1.0.0.zip
-dist/twitch-live-1.1.0.zip
+dist/twitch-live-1.2.0.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json

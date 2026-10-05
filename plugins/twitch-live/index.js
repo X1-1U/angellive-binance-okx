@@ -43,8 +43,38 @@ async function _tw_user(login) {
   if (!data.user) _tw_fail("NOT_FOUND", "找不到這個 Twitch 頻道");
   return data.user;
 }
+let _tw_categoriesCache = null, _tw_categoriesPending = null;
+async function _tw_categories() {
+  if (_tw_categoriesCache && Date.now() - _tw_categoriesCache.at < 300000) return _tw_categoriesCache.items;
+  if (_tw_categoriesPending) return _tw_categoriesPending;
+  _tw_categoriesPending = (async function () {
+    const items = [], seen = Object.create(null), cursors = Object.create(null);
+    let after = "";
+    for (let page = 0; page < 3; page++) {
+      let data;
+      try { data = await _tw_gql("{games(first:100" + (after ? ",after:" + JSON.stringify(after) : "") + "){edges{cursor node{id name boxArtURL(width:144,height:192)}} pageInfo{hasNextPage}}}"); }
+      catch (error) { if (!items.length) throw error; break; }
+      const connection = data.games;
+      if (!connection || !Array.isArray(connection.edges)) _tw_fail("UPSTREAM", "Twitch 分類格式已變更");
+      for (const edge of connection.edges) {
+        const game = edge.node;
+        if (!game || !/^\d+$/.test(_tw_str(game.id)) || seen[game.id]) continue;
+        seen[game.id] = true;
+        items.push({id:_tw_str(game.id),parentId:"root",title:_tw_str(game.name),icon:_tw_str(game.boxArtURL),biz:""});
+      }
+      const last = connection.edges[connection.edges.length - 1];
+      if (!(connection.pageInfo || {}).hasNextPage || !last || !last.cursor || cursors[last.cursor]) break;
+      after = last.cursor; cursors[after] = true;
+    }
+    if (!items.length) _tw_fail("UPSTREAM", "Twitch 未返回可用分類");
+    _tw_categoriesCache = {at:Date.now(),items:items}; return items;
+  })();
+  try { return await _tw_categoriesPending; } finally { _tw_categoriesPending = null; }
+}
 async function _tw_directory(category) {
-  const key = category === "zh" ? "zh" : "global";
+  // Old saved global/zh selections resolve to the first official category, never a language filter.
+  const key = !category || category === "global" || category === "zh" ? (await _tw_categories())[0].id : _tw_str(category);
+  if (!/^\d+$/.test(key)) _tw_fail("INVALID_ARGS", "無效的 Twitch 分類 ID");
   if (_tw_cache[key] && Date.now() - _tw_cache[key].at < 60000) return _tw_cache[key].rooms.slice();
   if (_tw_pending[key]) return (await _tw_pending[key]).slice();
   _tw_pending[key] = (async function () {
@@ -52,9 +82,10 @@ async function _tw_directory(category) {
     let after = "";
     for (let page = 0; page < 4; page++) {
       let data;
-      try { data = await _tw_gql("{streams(first:30" + (after ? ",after:" + JSON.stringify(after) : "") + ",options:{sort:VIEWER_COUNT" + (key === "zh" ? ",languages:[ZH]" : "") + "}){edges{cursor node{" + _tw_streamFields + " broadcaster{" + _tw_userFields + "}}} pageInfo{hasNextPage}}}"); }
+      try { data = await _tw_gql("{game(id:" + JSON.stringify(key) + "){streams(first:30" + (after ? ",after:" + JSON.stringify(after) : "") + "){edges{cursor node{" + _tw_streamFields + " broadcaster{" + _tw_userFields + "}}} pageInfo{hasNextPage}}}}"); }
       catch (error) { if (!rooms.length) throw error; break; }
-      const connection = data.streams;
+      if (!data.game) return [];
+      const connection = data.game.streams;
       if (!connection || !Array.isArray(connection.edges)) _tw_fail("UPSTREAM", "Twitch 直播目錄格式已變更");
       let added = 0;
       for (const edge of connection.edges) {
@@ -92,7 +123,7 @@ function _tw_timer() { return {mode:"heartbeat",intervalMs:15000}; }
 function _tw_session(p) { const s=_tw_sessions[_tw_str(p.connectionId)];if(!s)_tw_fail("INVALID_ARGS","Twitch 彈幕連線已失效");return s; }
 globalThis.LiveParsePlugin = {
   apiVersion:1,
-  async getCategories(){return [{id:"root",title:"Twitch Live",icon:"",biz:"",subList:[{id:"global",parentId:"root",title:"熱門直播",icon:"",biz:""},{id:"zh",parentId:"root",title:"中文直播",icon:"",biz:""}]}];},
+  async getCategories(){return [{id:"root",title:"Twitch 分類",icon:"",biz:"",subList:(await _tw_categories()).map(function(item){return Object.assign({},item);})}];},
   async getRooms(payload){const p=payload||{},rooms=await _tw_directory(p.id),start=(Math.max(1,Number(p.page)||1)-1)*30;return rooms.slice(start,start+30);},
   async getRoomDetail(payload){return _tw_room(await _tw_user(_tw_requireLogin(payload.roomId)));},
   async getLiveState(payload){return (await _tw_user(_tw_requireLogin(payload.roomId))).stream?"1":"0";},
