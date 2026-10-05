@@ -12,7 +12,7 @@ require "tmpdir"
 require "time"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
-PLUGINS = %w[binance okx youtube-tw twitch-live].freeze
+PLUGINS = %w[binance okx youtube-tw twitch-live twitch-live-test].freeze
 DIST = ROOT.join("dist")
 ASSET_NAMES = lambda do |plugin_id|
   [

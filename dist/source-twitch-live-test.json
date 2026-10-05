@@ -1,0 +1,64 @@
+{
+  "apiVersion": 1,
+  "generatedAt": "2026-10-05T10:37:49.407Z",
+  "sourceName": "twitch-live 測試版本 for AngelLive",
+  "plugins": [
+    {
+      "pluginId": "twitch-live-test",
+      "version": "0.1.0",
+      "platform": "twitch-live-test",
+      "platformName": "twitch-live 測試版本",
+      "platformDescription": "Twitch 官方遊戲／內容分類與匿名唯讀聊天室（非官方實驗版）",
+      "zipURLs": [
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.1.0.zip"
+      ],
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.1.0.zip",
+      "sha256": "73618a85f6cfecc97fa171b702e1a158cea045df3a818eaf9ae1964bf3e80756",
+      "changelog": [
+        "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"
+      ],
+      "auth": {
+        "required": false,
+        "credentialKinds": [],
+        "supportsStatusCheck": false,
+        "supportsValidation": false
+      },
+      "capabilities": {
+        "categories": {
+          "status": "available"
+        },
+        "rooms": {
+          "status": "partial",
+          "reason": "官方遊戲／內容分類（最多 300 類，維持接口順序），各類直播按在線人數排序；每類最多 4 頁，匿名驗證可能限制分頁；無中文獨立分類，不複製登入後個人化推薦"
+        },
+        "search": {
+          "status": "partial",
+          "reason": "官方中文／英文頻道搜尋首批結果；也可輸入完整頻道帳號或分享連結"
+        },
+        "roomDetail": {
+          "status": "available"
+        },
+        "liveState": {
+          "status": "available"
+        },
+        "playback": {
+          "status": "partial",
+          "reason": "開播時比較 site／embed 官方 HLS 入口，優先抽樣未見廣告標記者；不保證無廣告，不跳過中途廣告，不刪除分片，不使用第三方代理"
+        },
+        "shareResolve": {
+          "status": "partial",
+          "reason": "支援 Twitch 頻道網址及頻道英文帳號，不支援回放／剪輯"
+        },
+        "danmaku": {
+          "status": "partial",
+          "reason": "匿名 IRC WebSocket 即時文字彈幕、PING/PONG 保活與訊息去重；只讀，不登入、不發言，不載入歷史"
+        }
+      },
+      "icon": "assets/live_card_twitch-live-test.png",
+      "iosIcon": "assets/live_card_twitch-live-test.png",
+      "macosIcon": "assets/live_card_twitch-live-test.png",
+      "tvosIcon": "assets/live_card_twitch-live-test.png",
+      "visibility": "public"
+    }
+  ]
+}
