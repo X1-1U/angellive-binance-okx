@@ -216,15 +216,11 @@ LiveParsePlugin.getPlayback = async function(payload) {
 };
 
 // ---- zh-TW 翻譯（測試功能）----
-// 後端是自架的 Gemini 翻譯服務。存取密碼不寫在插件裡：使用者在 AngelLive 的平台帳號頁填入 API Token，
-// 宿主只會在瀏覽類函數（分類／列表／搜尋／詳情）把它放進 payload.apiToken；沒有 Token 時一律顯示原文。
-const _tw_trURL = "https://dmiteb.zzmzx325vip.top:3002/ai-translator/translate";
+// 後端是自架的 Gemini 翻譯服務的公開路徑：存取密碼由伺服器端的 nginx 代為附加並限流，插件不帶任何密碼。
+const _tw_trURL = "https://dmiteb.zzmzx325vip.top:3002/ai-translator-tw/translate";
 const _tw_trChunk = 20;
 const _tw_trCache = Object.create(null), _tw_trOrder = [];
-let _tw_trToken = "", _tw_trPausedUntil = 0, _tw_trFailures = 0;
-function _tw_trNormalizeToken(value) { return _tw_str(value).trim().replace(/^(?:bearer|oauth)\s+/i, ""); }
-// 聊天回調拿不到 apiToken，沿用同一個 runtime 最近一次瀏覽呼叫帶來的值；宿主更換或清除 Token 時會重建 runtime。
-function _tw_trAdopt(payload) { _tw_trToken = _tw_trNormalizeToken((payload || {}).apiToken); }
+let _tw_trPausedUntil = 0, _tw_trFailures = 0;
 function _tw_trRemember(text, value) {
   if (!(text in _tw_trCache)) _tw_trOrder.push(text);
   _tw_trCache[text] = value;
@@ -239,10 +235,10 @@ function _tw_translatable(text) {
   const words = plain.split(/\s+/).filter(function (word) { return /[a-z\u00df-\u024f\u0400-\u04ff]{2,}/.test(word); });
   return words.length >= 3;
 }
-async function _tw_trRequest(token, texts, timeout) {
+async function _tw_trRequest(texts, timeout) {
   const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
     url: _tw_trURL, method: "POST", timeout: timeout,
-    headers: {"Content-Type": "application/json", Authorization: "Bearer " + token},
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify({texts: texts})
   }});
   const status = r ? Number(r.status) : 0;
@@ -258,37 +254,27 @@ async function _tw_translateBatch(texts, timeout) {
     if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
     else if (_tw_translatable(texts[i]) && need.indexOf(texts[i]) < 0) need.push(texts[i]);
   }
-  if (!need.length || !_tw_trToken || Date.now() < _tw_trPausedUntil) return output;
-  try {
-    const chunks = [];
-    for (let i = 0; i < need.length; i += _tw_trChunk) chunks.push(need.slice(i, i + _tw_trChunk));
-    const results = await Promise.all(chunks.map(function (chunk) { return _tw_trRequest(_tw_trToken, chunk, timeout || 12); }));
-    chunks.forEach(function (chunk, c) { chunk.forEach(function (text, i) { _tw_trRemember(text, _tw_str(results[c][i]).trim() || text); }); });
-    _tw_trFailures = 0;
-  } catch (error) {
-    // 密碼錯誤直接停 10 分鐘；其他失敗 30 秒起逐次加倍，最長 10 分鐘。期間顯示原文。
+  if (!need.length || Date.now() < _tw_trPausedUntil) return output;
+  const chunks = [];
+  for (let i = 0; i < need.length; i += _tw_trChunk) chunks.push(need.slice(i, i + _tw_trChunk));
+  // 各批獨立結算：一批失敗（例如 Gemini 偶發回應格式不符）不影響其他批的結果。
+  const results = await Promise.all(chunks.map(async function (chunk) {
+    try { return await _tw_trRequest(chunk, timeout || 12); } catch (_) { return null; }
+  }));
+  let succeeded = 0;
+  chunks.forEach(function (chunk, c) {
+    if (!results[c]) return;
+    succeeded += 1;
+    chunk.forEach(function (text, i) { _tw_trRemember(text, _tw_str(results[c][i]).trim() || text); });
+  });
+  if (succeeded) _tw_trFailures = 0;
+  else {
+    // 全部失敗（被限流或服務異常）才暫停翻譯：30 秒起逐次加倍，最長 10 分鐘。期間顯示原文。
     _tw_trFailures += 1;
-    _tw_trPausedUntil = Date.now() + (error && error.status === 401 ? 600000 : Math.min(30000 * Math.pow(2, _tw_trFailures - 1), 600000));
+    _tw_trPausedUntil = Date.now() + Math.min(30000 * Math.pow(2, _tw_trFailures - 1), 600000);
   }
   for (let i = 0; i < texts.length; i++) if (texts[i] in _tw_trCache) output[i] = _tw_trCache[texts[i]];
   return output;
-}
-async function _tw_trStatus(payload) {
-  const token = _tw_trNormalizeToken((payload || {}).apiToken);
-  if (!token) return {state: "invalid", credentialKind: "token", authorizationType: "api", expireAt: 0, message: "尚未填入翻譯服務密碼"};
-  try {
-    await _tw_trRequest(token, ["ping"], 30);
-    return {state: "valid", credentialKind: "token", authorizationType: "api", expireAt: 0};
-  } catch (error) {
-    if (error && error.status === 401) return {state: "invalid", credentialKind: "token", authorizationType: "api", expireAt: 0, message: "翻譯服務密碼不正確"};
-    _tw_fail("NETWORK", "無法連線到翻譯服務，請稍後再試");
-  }
-}
-LiveParsePlugin.validateCredential = _tw_trStatus;
-LiveParsePlugin.getCredentialStatus = _tw_trStatus;
-for (const name of ["getCategories", "getLiveState"]) {
-  const base = LiveParsePlugin[name];
-  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return base.call(LiveParsePlugin, payload); };
 }
 async function _tw_translateRooms(rooms) {
   const titles = await _tw_translateBatch(rooms.map(function (room) { return room.roomTitle; }));
@@ -296,11 +282,11 @@ async function _tw_translateRooms(rooms) {
 }
 for (const name of ["getRooms", "search"]) {
   const base = LiveParsePlugin[name];
-  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
+  LiveParsePlugin[name] = async function (payload) { return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
 }
 for (const name of ["getRoomDetail", "resolveShare"]) {
   const base = LiveParsePlugin[name];
-  LiveParsePlugin[name] = async function (payload) { _tw_trAdopt(payload); return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
+  LiveParsePlugin[name] = async function (payload) { return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
 }
 
 // 聊天翻譯：frame 回調不等待網路，待翻譯訊息先排隊，由每秒一次的 tick 批次翻譯後送出（延遲取決於翻譯服務，通常數秒）。
@@ -314,7 +300,7 @@ LiveParsePlugin.onDanmakuOpen = async function (payload) {
 LiveParsePlugin.onDanmakuFrame = async function (payload) {
   const result = await _tw_baseFrame.call(LiveParsePlugin, payload), s = _tw_session(payload), now = [];
   if (!s.queue) s.queue = [];
-  const paused = !_tw_trToken || Date.now() < _tw_trPausedUntil;
+  const paused = Date.now() < _tw_trPausedUntil;
   for (const message of result.messages || []) {
     if (message.text in _tw_trCache) now.push(Object.assign({}, message, {text: _tw_trCache[message.text]}));
     else if (!paused && _tw_translatable(message.text)) s.queue.push(message);
