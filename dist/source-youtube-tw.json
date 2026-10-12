@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-05T12:08:03Z",
+  "generatedAt": "2026-10-12T18:55:56Z",
   "sourceName": "youtube-tw for AngelLive",
   "plugins": [
     {
       "pluginId": "youtube-tw",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "platform": "youtube-tw",
       "platformName": "youtube-tw",
       "platformDescription": "台灣優先、繁體中文的 YouTube 公開直播與聊天室（免登入，非官方實驗版）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.1.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.0.zip",
-      "sha256": "a0993356d521f422884ef4d955f1a83165b12535a7e1ab238cd9d81bc2042f14",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/youtube-tw-1.0.1.zip",
+      "sha256": "0f7b1f964e965759be75af629ffc4fbe70f1d315812b84aa237f403a5090ec36",
       "changelog": [
+        "1.0.1：收藏查詢失敗時顯示未知，縮短狀態請求時間；優先採用官方 isLiveNow，避免已結束的直播因舊 isLive 標記繼續顯示在播",
         "1.0.0：加入免登入 YouTube 台灣直播推薦、新聞／遊戲／音樂／即時影像分類、HLS 多畫質與持續聊天室彈幕；不修改 Binance／OKX"
       ],
       "auth": {
@@ -46,7 +47,7 @@
         },
         "liveState": {
           "status": "partial",
-          "reason": "查詢目前影片的官方播放狀態，不把回放當成直播"
+          "reason": "查詢目前影片的官方播放狀態，不把回放當成直播；刷新失敗顯示未知，不沿用舊直播標記"
         },
         "shareResolve": {
           "status": "partial",

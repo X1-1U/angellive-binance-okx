@@ -59,7 +59,7 @@ async function loadPlugin(pluginId, responder) {
   context.globalThis = context;
   const source = await fs.readFile(path.join(root, "plugins", pluginId, "index.js"), "utf8");
   new vm.Script(source, { filename: `${pluginId}/index.js` }).runInContext(context);
-  return { plugin: context.LiveParsePlugin, requests };
+  return { plugin: context.LiveParsePlugin, requests, context };
 }
 
 function assertRoom(room, expectedType) {
@@ -296,6 +296,7 @@ const okx = await loadPlugin("okx", async (input) => {
   const url = input.request.url;
   if (url.includes("users-all")) return okxList;
   if (url.includes("anonymous-token")) return okxToken;
+  if (url.includes("/status?shareCode=oldFixtureShare-1")) return {code:"0", data:{status:3}};
   if (url.includes("/status?")) return okxStatus;
   if (url.includes("/livestream/v1/info?")) return okxPlaybackInfo;
   throw new Error(`Unexpected OKX URL: ${url}`);
@@ -508,4 +509,99 @@ assert.equal(hotOK[0][1].liveWatchedCount, "0");
 assert.ok(maxDirectoryRequests <= 4);
 assert.equal(hotOKX.requests.filter(r => r.request.url.endsWith("pageIndex=0&pageSize=20")).length, 1);
 assert.ok(hotOKX.requests.every(r => r.request.headers["Accept-Language"] === "zh-TW,zh-CN;q=0.9,zh;q=0.8"));
-console.log("contract: OK (binance, okx, popularity, pagination, concurrency)");
+// A cached live room is only identity/artwork. Refresh failures must clear its live badge,
+// while successful offline and subsequent live responses must remain authoritative.
+for (const id of ["binance", "okx"]) {
+  let phase = "live";
+  const instance = await loadPlugin(id, async (input) => {
+    const url = input.request.url;
+    if (phase === "failed") throw new Error("simulated unreachable upstream");
+    if (id === "binance") {
+      if (url.includes("room-detail") || url.includes("/pgc/content/")) {
+        const data = {...binanceLiveItem};
+        if (phase === "ended") {data.liveStatus = 3; data.streamStatus = 0;}
+        if (phase === "missing") {delete data.liveStatus; delete data.status; delete data.streamStatus;}
+        return {code:"000000", success:true, data};
+      }
+      if (url.includes("feed/live/list")) return JSON.parse(input.request.body).pageIndex === 1 ? binanceList : {code:"000000",success:true,data:{vos:[]}};
+      if (url.includes("feed-recommend/list")) return binanceList;
+      if (url.includes("audio-live-recommend/list")) return {code:"000000",success:true,data:{spaceLiveList:[]}};
+    } else {
+      if (url.includes("users-all")) return okxList;
+      if (url.includes("anonymous-token")) return okxToken;
+      if (url.includes("/status?")) return {code:"0",data:phase === "missing" ? {} : {...okxStatus.data,status:phase === "ended" ? 3 : 1,allowRecording:0}};
+    }
+    throw new Error("Unexpected refresh request");
+  });
+  const room = (await instance.plugin.getRooms({page:1}))[0];
+  const payload = {roomId:room.roomId};
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "1");
+  phase = "failed";
+  const unknown = await instance.plugin.getRoomDetail(payload);
+  assert.equal(unknown.liveState, "3", `${id}: failed refresh must not reuse live state`);
+  assert.equal(unknown.roomId, room.roomId);
+  assert.equal(unknown.userName, room.userName, `${id}: preserve cached identity`);
+  assert.equal((await instance.plugin.getLiveState(payload)).liveState, "3");
+  phase = "missing";
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "3", `${id}: absent fresh status must not inherit cached live status`);
+  phase = "ended";
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "0", `${id}: authoritative offline clears cached live state`);
+  phase = "live";
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "1", `${id}: next successful refresh recovers live state`);
+
+  // Advance a fake clock by each request's full timeout: no real sleeps required.
+  let clock = 100000;
+  const slow = await loadPlugin(id, async (input) => {
+    assert.ok(input.request.timeout > 0 && input.request.timeout <= 3);
+    clock += input.request.timeout * 1000;
+    throw new Error("simulated full request timeout");
+  });
+  slow.context.Date = {now:()=>clock};
+  const slowResult = await slow.plugin.getRoomDetail({roomId:room.roomId,userId:room.userId});
+  assert.equal(slowResult.liveState, "3");
+  assert.ok(clock <= 112000, `${id}: entire refresh must fit within its 12-second budget`);
+  assert.ok(slow.requests.length <= 4);
+}
+// The three other IDs use the same host freshness contract, including the translating test ID.
+// A cold favorite refresh must find a new session without a prior directory load.
+for (const id of ["binance", "okx"]) {
+  const cold = await loadPlugin(id, async (input) => {
+    const url = input.request.url;
+    if (id === "binance") {
+      if (url.includes("room-detail")) return url.includes("39715484101961") ? binanceDetail : binanceLiveDetail;
+      if (url.includes("feed/live/list")) return binanceList;
+    } else {
+      if (url.includes("anonymous-token")) return okxToken;
+      if (url.includes("/status?")) return url.includes("oldFixtureShare-1") ? {code:"0",data:{status:3}} : okxStatus;
+      if (url.includes("users-all")) return okxList;
+    }
+    throw new Error("Unexpected cold favorite request");
+  });
+  const room = await cold.plugin.getRoomDetail({roomId:id === "binance" ? "39715484101961" : "oldFixtureShare-1",userId:id === "binance" ? "fixture-square-uid" : "872836765600919552"});
+  assert.equal(room.liveState, "1");
+  assert.equal(room.roomId, id === "binance" ? "49990000123456" : "fixtureShareCode-1");
+}
+for (const id of ["twitch-live", "twitch-live-test", "youtube-tw"]) {
+  let phase = "live", translations = 0;
+  const instance = await loadPlugin(id, async (input) => {
+    if (input.request.url.includes("/translate")) {translations++; throw new Error("translation must not block refresh");}
+    assert.equal(input.request.timeout, 5);
+    if (phase === "failed") throw new Error("simulated refresh failure");
+    if (id === "youtube-tw") return {playabilityStatus:{status:"OK"},videoDetails:{videoId:"testvideo01",channelId:"UCprobe",author:"probe",title:"Uncached English room title today",isLive:true},microformat:{playerMicroformatRenderer:{liveBroadcastDetails:{isLiveNow:phase !== "ended"}}}};
+    return {data:{user:{id:"probe-id",login:"probe",displayName:"probe",lastBroadcast:{title:"Uncached English room title today"},stream:phase === "ended" ? null : {title:"Uncached English room title today",viewersCount:1}}}};
+  });
+  const payload = {roomId:id === "youtube-tw" ? "testvideo01" : "probe"};
+  const live = await instance.plugin.getRoomDetail(payload);
+  assert.equal(live.liveState, "1");
+  phase = "failed";
+  const unknown = await instance.plugin.getRoomDetail(payload);
+  assert.equal(unknown.liveState, "3");
+  assert.equal(unknown.userName, live.userName);
+  assert.equal(await instance.plugin.getLiveState(payload), "3");
+  phase = "ended";
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "0");
+  phase = "live";
+  assert.equal((await instance.plugin.getRoomDetail(payload)).liveState, "1");
+  assert.equal(translations, 0, `${id}: status refresh must not wait on translation`);
+}
+console.log("contract: OK (binance, okx, refresh freshness, timeout budget, recovery, popularity, pagination, concurrency)");

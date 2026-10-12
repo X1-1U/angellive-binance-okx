@@ -3,6 +3,13 @@ const _yt_base = "https://www.youtube.com";
 const _yt_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 const _yt_sessions = Object.create(null);
 const _yt_lists = Object.create(null);
+const _yt_roomCache = Object.create(null);
+function _yt_rememberRoom(room) {
+  _yt_roomCache[room.roomId] = room;
+  const keys = Object.keys(_yt_roomCache);
+  if (keys.length > 1000) delete _yt_roomCache[keys[0]];
+  return room;
+}
 const _yt_queries = { all: "台灣 直播", news: "台灣 新聞 直播", games: "台灣 遊戲 直播", music: "台灣 音樂 直播", scenery: "台灣 即時影像" };
 function _yt_str(v) { return v == null ? "" : String(v); }
 function _yt_error(code, message) {
@@ -51,9 +58,9 @@ function _yt_id(value) {
   return match ? match[1] : "";
 }
 function _yt_requireID(value) { const id = _yt_id(value); if (!id) _yt_error("INVALID_ARGS", "請輸入 YouTube 影片直播分享連結或 11 位影片 ID"); return id; }
-async function _yt_request(url, body, headers) {
+async function _yt_request(url, body, headers, timeout) {
   const response = await Host.http.request({ platformId: "youtube-tw", authMode: "none", request: {
-    url: url, method: body === undefined ? "GET" : "POST", timeout: 20,
+    url: url, method: body === undefined ? "GET" : "POST", timeout: timeout === undefined ? 20 : timeout,
     headers: Object.assign({ "User-Agent": _yt_ua, "Accept-Language": "zh-TW,zh;q=0.9", Origin: _yt_base, Referer: _yt_base + "/", "Content-Type": "application/json" }, headers || {}),
     body: body === undefined ? null : JSON.stringify(body)
   } });
@@ -81,7 +88,7 @@ function _yt_card(v) {
   if (!live || !_yt_id(v.videoId) || v.upcomingEventData) return null;
   const author = v.ownerText || v.longBylineText || v.shortBylineText;
   const endpoint = _yt_walk(author, "browseEndpoint")[0] || {};
-  return { roomId: v.videoId, userId: endpoint.browseId || v.videoId, userName: _yt_text(author), roomTitle: _yt_text(v.title), roomCover: _yt_thumb(v.thumbnail), userHeadImg: _yt_thumb(((v.channelThumbnailSupportedRenderers || {}).channelThumbnailWithLinkRenderer || {}).thumbnail), liveState: "1", liveType: "youtube-tw", liveWatchedCount: String(_yt_count(v.viewCountText)), biz: "" };
+  return _yt_rememberRoom({ roomId: v.videoId, userId: endpoint.browseId || v.videoId, userName: _yt_text(author), roomTitle: _yt_text(v.title), roomCover: _yt_thumb(v.thumbnail), userHeadImg: _yt_thumb(((v.channelThumbnailSupportedRenderers || {}).channelThumbnailWithLinkRenderer || {}).thumbnail), liveState: "1", liveType: "youtube-tw", liveWatchedCount: String(_yt_count(v.viewCountText)), biz: "" });
 }
 async function _yt_search(query) {
   const cached = _yt_lists[query];
@@ -106,11 +113,11 @@ async function _yt_search(query) {
   if (Object.keys(_yt_lists).length > 12) delete _yt_lists[Object.keys(_yt_lists)[0]];
   return rooms;
 }
-async function _yt_player(id) {
+async function _yt_player(id, timeout) {
   // Public Android client offers muxed live HLS; never decipher DRM or request user credentials.
   const result = _yt_json(await _yt_request(_yt_base + "/youtubei/v1/player?prettyPrint=false", {
     context: { client: { clientName: "ANDROID", clientVersion: "21.26.364", androidSdkVersion: 30, hl: "zh-TW", gl: "TW" } }, videoId: id
-  }));
+  }, undefined, timeout));
   if (!result || result.error) _yt_error("UPSTREAM", "YouTube 播放接口未返回有效資料");
   const status = result.playabilityStatus || {};
   if (status.status !== "OK" && status.status !== "LIVE_STREAM_OFFLINE") _yt_error(status.status === "LOGIN_REQUIRED" ? "AUTH_REQUIRED" : "NOT_FOUND", _yt_str(status.reason) || "這個直播不支援免登入觀看");
@@ -118,7 +125,19 @@ async function _yt_player(id) {
 }
 function _yt_room(id, p) {
   const v = p.videoDetails || {}, m = ((p.microformat || {}).playerMicroformatRenderer || {}).liveBroadcastDetails || {};
-  return { roomId: id, userId: v.channelId || id, userName: v.author || "YouTube", roomTitle: v.title || id, roomCover: _yt_thumb(v.thumbnail), userHeadImg: "", liveState: v.isUpcoming ? "3" : (p.playabilityStatus || {}).status === "LIVE_STREAM_OFFLINE" ? "0" : v.isLive === true || m.isLiveNow === true ? "1" : "0", liveType: "youtube-tw", liveWatchedCount: "0", biz: "" };
+  const live = typeof m.isLiveNow === "boolean" ? m.isLiveNow : v.isLive === true;
+  return _yt_rememberRoom({ roomId: id, userId: v.channelId || id, userName: v.author || "YouTube", roomTitle: v.title || id, roomCover: _yt_thumb(v.thumbnail), userHeadImg: "", liveState: v.isUpcoming ? "3" : (p.playabilityStatus || {}).status === "LIVE_STREAM_OFFLINE" ? "0" : live ? "1" : "0", liveType: "youtube-tw", liveWatchedCount: "0", biz: "" });
+}
+async function _yt_refreshRoom(payload) {
+  const id = _yt_requireID(payload.roomId);
+  try {
+    const player = await _yt_player(id, 5);
+    if (player.playabilityStatus.status === "OK" && !player.videoDetails) throw new Error("Missing video details");
+    return _yt_room(id, player);
+  }
+  catch (_) {
+    return Object.assign({}, _yt_roomCache[id] || {roomId:id,userId:payload.userId||id,userName:"YouTube",roomTitle:id,roomCover:"",userHeadImg:"",liveType:"youtube-tw",liveWatchedCount:"0",biz:""}, {liveState:"3"});
+  }
 }
 function _yt_mediaURL(url) { return /^https:\/\/[a-z0-9.-]+\.googlevideo\.com\//i.test(_yt_str(url)); }
 function _yt_quality(id, url, title, qn) {
@@ -173,8 +192,8 @@ globalThis.LiveParsePlugin = {
     return rooms.slice(start, start + 20);
   },
   async resolveShare(payload) { const id = _yt_requireID(payload.shareCode); return _yt_room(id, await _yt_player(id)); },
-  async getRoomDetail(payload) { const id = _yt_requireID(payload.roomId); return _yt_room(id, await _yt_player(id)); },
-  async getLiveState(payload) { const id = _yt_requireID(payload.roomId); return _yt_room(id, await _yt_player(id)).liveState; },
+  async getRoomDetail(payload) { return _yt_refreshRoom(payload); },
+  async getLiveState(payload) { return (await _yt_refreshRoom(payload)).liveState; },
   async getPlayback(payload) {
     const id = _yt_requireID(payload.roomId), player = await _yt_player(id);
     if (_yt_room(id, player).liveState !== "1") _yt_error("NOT_FOUND", "直播尚未開始或已結束；本插件不播放回放");

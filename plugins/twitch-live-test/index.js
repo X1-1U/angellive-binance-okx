@@ -5,6 +5,7 @@ const _tw_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.
 const _tw_streamFields = "id title viewersCount previewImageURL(width:640,height:360) game{name}";
 const _tw_userFields = "id login displayName profileImageURL(width:150)";
 const _tw_cache = Object.create(null), _tw_pending = Object.create(null), _tw_sessions = Object.create(null);
+const _tw_roomCache = Object.create(null);
 function _tw_str(v) { return v == null ? "" : String(v); }
 function _tw_fail(code, message) {
   if (typeof Host.raise === "function") Host.raise(code, message, {});
@@ -17,17 +18,17 @@ function _tw_login(value) {
   return ["directory", "videos", "downloads", "settings", "search", "subscriptions", "login", "signup", "p", "jobs"].indexOf(login) >= 0 ? "" : login;
 }
 function _tw_requireLogin(value) { const login = _tw_login(value); if (!login) _tw_fail("INVALID_ARGS", "請輸入 Twitch 頻道連結或英文頻道帳號，不支援影片回放／剪輯連結"); return login; }
-async function _tw_http(url, body) {
+async function _tw_http(url, body, timeout) {
   const r = await Host.http.request({platformId: _tw_id, authMode: "none", request: {
-    url: url, method: body === undefined ? "GET" : "POST", timeout: 20,
+    url: url, method: body === undefined ? "GET" : "POST", timeout: timeout === undefined ? 20 : timeout,
     headers: Object.assign({"User-Agent": _tw_ua, "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8"}, body === undefined ? {} : {"Client-ID": _tw_client, "Content-Type": "application/json", Origin: "https://www.twitch.tv", Referer: "https://www.twitch.tv/"}),
     body: body === undefined ? null : JSON.stringify(body)
   }});
   if (!r || r.status < 200 || r.status >= 300) _tw_fail(r && r.status === 429 ? "RATE_LIMITED" : r && (r.status === 401 || r.status === 403) ? "BLOCKED" : "NETWORK", "Twitch 請求失敗（HTTP " + (r && r.status) + "），可能受地區或匿名存取限制");
   return _tw_str(r.bodyText);
 }
-async function _tw_gql(query, variables) {
-  const raw = await _tw_http("https://gql.twitch.tv/gql", {query: query, variables: variables || {}});
+async function _tw_gql(query, variables, timeout) {
+  const raw = await _tw_http("https://gql.twitch.tv/gql", {query: query, variables: variables || {}}, timeout);
   let result; try { result = JSON.parse(raw); } catch (_) { _tw_fail("UPSTREAM", "Twitch 返回非 JSON 資料"); }
   if (result && Array.isArray(result.errors) && result.errors.some(function(e){return (e.extensions||{}).code === "IntegrityCheckFailed";})) _tw_fail("BLOCKED", "Twitch 拒絕匿名接口請求，可能需要官方客戶端驗證");
   if (!result || result.errors || !result.data) _tw_fail("UPSTREAM", "Twitch 公開接口暫時不可用或已變更");
@@ -35,13 +36,33 @@ async function _tw_gql(query, variables) {
 }
 function _tw_room(user) {
   const s = user.stream || {};
-  return {roomId: _tw_str(user.login), userId: _tw_str(user.id), userName: _tw_str(user.displayName || user.login), roomTitle: _tw_str(s.title || (user.lastBroadcast || {}).title || user.displayName), roomCover: _tw_str(s.previewImageURL || user.profileImageURL), userHeadImg: _tw_str(user.profileImageURL), liveState: user.stream ? "1" : "0", liveType: _tw_id, liveWatchedCount: String(Math.max(0, Number(s.viewersCount) || 0)), biz: _tw_str((s.game || {}).name)};
+  const room = {roomId: _tw_str(user.login), userId: _tw_str(user.id), userName: _tw_str(user.displayName || user.login), roomTitle: _tw_str(s.title || (user.lastBroadcast || {}).title || user.displayName), roomCover: _tw_str(s.previewImageURL || user.profileImageURL), userHeadImg: _tw_str(user.profileImageURL), liveState: user.stream ? "1" : "0", liveType: _tw_id, liveWatchedCount: String(Math.max(0, Number(s.viewersCount) || 0)), biz: _tw_str((s.game || {}).name)};
+  if (room.roomId) {
+    _tw_roomCache[room.roomId] = room;
+    const keys = Object.keys(_tw_roomCache);
+    if (keys.length > 1000) delete _tw_roomCache[keys[0]];
+  }
+  return room;
 }
 function _tw_sort(rooms) { return rooms.sort(function (a,b) { return Number(b.liveWatchedCount) - Number(a.liveWatchedCount) || a.roomId.localeCompare(b.roomId); }); }
-async function _tw_user(login) {
-  const data = await _tw_gql("query($login:String!){user(login:$login){" + _tw_userFields + " lastBroadcast{title} stream{" + _tw_streamFields + "}}}", {login: login});
+async function _tw_user(login, timeout) {
+  const data = await _tw_gql("query($login:String!){user(login:$login){" + _tw_userFields + " lastBroadcast{title} stream{" + _tw_streamFields + "}}}", {login: login}, timeout);
   if (!data.user) _tw_fail("NOT_FOUND", "找不到這個 Twitch 頻道");
   return data.user;
+}
+async function _tw_refreshRoom(payload) {
+  const login = _tw_requireLogin(payload.roomId);
+  try {
+    const data = await _tw_gql("query($login:String!){user(login:$login){" + _tw_userFields + " lastBroadcast{title} stream{" + _tw_streamFields + "}}}", {login:login}, 5);
+    if (!Object.prototype.hasOwnProperty.call(data, "user")) throw new Error("Missing user response");
+    if (data.user) {
+      if (!Object.prototype.hasOwnProperty.call(data.user, "stream")) throw new Error("Missing stream status");
+      return _tw_room(data.user);
+    }
+    return Object.assign({}, _tw_roomCache[login] || _tw_room({login:login,id:payload.userId||""}), {liveState:"0"});
+  } catch (_) {
+    return Object.assign({}, _tw_roomCache[login] || _tw_room({login:login,id:payload.userId||""}), {liveState:"3"});
+  }
 }
 let _tw_categoriesCache = null, _tw_categoriesPending = null;
 async function _tw_categories() {
@@ -125,8 +146,8 @@ globalThis.LiveParsePlugin = {
   apiVersion:1,
   async getCategories(){return [{id:"root",title:"Twitch 分類",icon:"",biz:"",subList:(await _tw_categories()).map(function(item){return Object.assign({},item);})}];},
   async getRooms(payload){const p=payload||{},rooms=await _tw_directory(p.id),start=(Math.max(1,Number(p.page)||1)-1)*30;return rooms.slice(start,start+30);},
-  async getRoomDetail(payload){return _tw_room(await _tw_user(_tw_requireLogin(payload.roomId)));},
-  async getLiveState(payload){return (await _tw_user(_tw_requireLogin(payload.roomId))).stream?"1":"0";},
+  async getRoomDetail(payload){return _tw_refreshRoom(payload);},
+  async getLiveState(payload){return (await _tw_refreshRoom(payload)).liveState;},
   async resolveShare(payload){return _tw_room(await _tw_user(_tw_requireLogin(payload.shareCode)));},
   async search(payload){
     const p=payload||{},q=_tw_str(p.keyword).trim();if(!q)_tw_fail("INVALID_ARGS","請輸入頻道名稱或分享地址");if(Number(p.page)>1)return [];
@@ -284,10 +305,15 @@ for (const name of ["getRooms", "search"]) {
   const base = LiveParsePlugin[name];
   LiveParsePlugin[name] = async function (payload) { return _tw_translateRooms(await base.call(LiveParsePlugin, payload)); };
 }
-for (const name of ["getRoomDetail", "resolveShare"]) {
+for (const name of ["resolveShare"]) {
   const base = LiveParsePlugin[name];
   LiveParsePlugin[name] = async function (payload) { return (await _tw_translateRooms([await base.call(LiveParsePlugin, payload)]))[0]; };
 }
+const _tw_refreshDetail = LiveParsePlugin.getRoomDetail;
+LiveParsePlugin.getRoomDetail = async function(payload) {
+  const room = await _tw_refreshDetail(payload);
+  return Object.assign({}, room, {roomTitle:_tw_trCache[room.roomTitle] || room.roomTitle});
+};
 
 // 聊天翻譯：frame 回調不等待網路，待翻譯訊息先排隊，由每秒一次的 tick 批次翻譯後送出（延遲取決於翻譯服務，通常數秒）。
 const _tw_trBatchSize = 20, _tw_trQueueLimit = 36;

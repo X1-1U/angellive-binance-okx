@@ -94,7 +94,7 @@ async function _ok_requestJSON(request) {
         _ok_object(req.headers)
       ),
       body: req.body === undefined ? null : _ok_str(req.body),
-      timeout: 20
+      timeout: _ok_num(req.timeout, 20)
     }
   });
   const status = _ok_num(response && response.status, 0);
@@ -183,6 +183,7 @@ function _ok_applyFreshStatus(room, shareCode, status) {
 function _ok_statusLiveState(status) {
   const object = _ok_object(status);
   const code = _ok_num(object.status, -1);
+  if (code < 0) return "3";
   if (code === 1) return "1";
   if (code === 0 || code === 2) return "3";
   if (code === 3 && (object.allowRecording === true || _ok_num(object.allowRecording, 0) === 1)) {
@@ -207,10 +208,11 @@ function _ok_rememberOne(room) {
   return room;
 }
 
-async function _ok_fetchDirectoryPage(index, pageSize) {
-  const result = await _ok_requestJSON(
-    `${_ok_baseURL}/priapi/v5/content/public/livestream/users-all?pageIndex=${Math.max(0, _ok_num(index, 0))}&pageSize=${Math.max(1, _ok_num(pageSize, _ok_pageSize))}`
-  );
+async function _ok_fetchDirectoryPage(index, pageSize, timeout) {
+  const result = await _ok_requestJSON({
+    url: `${_ok_baseURL}/priapi/v5/content/public/livestream/users-all?pageIndex=${Math.max(0, _ok_num(index, 0))}&pageSize=${Math.max(1, _ok_num(pageSize, _ok_pageSize))}`,
+    timeout: timeout
+  });
   const data = _ok_object(result.data);
   return {
     total: Math.max(0, _ok_num(data.total, 0)),
@@ -339,7 +341,7 @@ function _ok_makeDeviceId() {
   return _ok_runtime.deviceId;
 }
 
-async function _ok_fetchAnonymousAuth(forceRefresh) {
+async function _ok_fetchAnonymousAuth(forceRefresh, deadline) {
   if (
     !forceRefresh &&
     _ok_runtime.anonymousToken &&
@@ -350,6 +352,7 @@ async function _ok_fetchAnonymousAuth(forceRefresh) {
   const result = await _ok_requestJSON({
     url: `${_ok_baseURL}/priapi/v1/im/auth/v1/token/anonymous-token`,
     method: "POST",
+    timeout: deadline ? _ok_statusTimeout(deadline) : undefined,
     headers: {
       "Content-Type": "application/json",
       Referer: `${_ok_baseURL}/livestream/stream-room`
@@ -365,13 +368,14 @@ async function _ok_fetchAnonymousAuth(forceRefresh) {
   return { token: token, userUid: _ok_runtime.anonymousUid };
 }
 
-async function _ok_fetchStatus(shareCode, forceRefresh) {
+async function _ok_fetchStatus(shareCode, forceRefresh, deadline) {
   const code = _ok_parseShareCode(shareCode);
   if (!code) _ok_throw("INVALID_ARGS", "A valid OKX livestream shareCode is required", {});
-  let auth = await _ok_fetchAnonymousAuth(!!forceRefresh);
+  let auth = await _ok_fetchAnonymousAuth(!!forceRefresh, deadline);
   try {
     const result = await _ok_requestJSON({
       url: `${_ok_baseURL}/priapi/v1/im/livestream/stream/v1/status?shareCode=${encodeURIComponent(code)}`,
+      timeout: deadline ? _ok_statusTimeout(deadline) : undefined,
       headers: {
         "im-token": auth.token,
         Referer: _ok_externalURL(code)
@@ -380,9 +384,10 @@ async function _ok_fetchStatus(shareCode, forceRefresh) {
     return _ok_object(result.data);
   } catch (error) {
     if (forceRefresh || !error || error.code !== "AUTH_REQUIRED") throw error;
-    auth = await _ok_fetchAnonymousAuth(true);
+    auth = await _ok_fetchAnonymousAuth(true, deadline);
     const retry = await _ok_requestJSON({
       url: `${_ok_baseURL}/priapi/v1/im/livestream/stream/v1/status?shareCode=${encodeURIComponent(code)}`,
+      timeout: deadline ? _ok_statusTimeout(deadline) : undefined,
       headers: {
         "im-token": auth.token,
         Referer: _ok_externalURL(code)
@@ -545,6 +550,51 @@ async function _ok_resolveCurrentTarget(roomId, userId) {
     room: _ok_runtime.rooms[originalShareCode] || null,
     verifiedLive: false
   };
+}
+
+function _ok_statusTimeout(deadline) {
+  const remaining = (deadline - Date.now()) / 1000;
+  if (remaining <= 0) _ok_throw("NETWORK", "直播狀態查詢逾時", {});
+  return Math.min(3, remaining);
+}
+
+async function _ok_refreshFavorite(roomId, userId) {
+  const code = _ok_parseShareCode(roomId), uid = _ok_str(userId).trim(), deadline = Date.now() + 12000;
+  if (!code) _ok_throw("INVALID_ARGS", "roomId is required", {field:"roomId"});
+  const unknown = Object.assign({}, _ok_runtime.rooms[code] || _ok_fallbackRoom(code, "3"), {liveState:"3"});
+  if (uid) unknown.userId = uid;
+  let original;
+  try {
+    const status = await _ok_fetchStatus(code, false, deadline);
+    original = _ok_applyFreshStatus(_ok_runtime.rooms[code], code, status);
+    if (uid) original.userId = uid;
+  } catch (_) {}
+  if (original && original.liveState === "1") return original;
+  if (!uid || uid === "0") return original || unknown;
+  const seen = Object.create(null); seen[code] = true;
+  async function verify(rooms) {
+    for (const room of rooms) {
+      if (!room.roomId || seen[room.roomId] || _ok_str(room.userId) !== uid) continue;
+      seen[room.roomId] = true;
+      const status = await _ok_fetchStatus(room.roomId, false, deadline);
+      if (_ok_statusLiveState(status) === "1") return _ok_applyFreshStatus(room, room.roomId, status);
+    }
+    return null;
+  }
+  try {
+    const remembered = await verify(Object.keys(_ok_runtime.rooms).map(function(key){return _ok_runtime.rooms[key];}));
+    if (remembered) return remembered;
+    const first = await _ok_fetchDirectoryPage(0, _ok_pageSize, _ok_statusTimeout(deadline));
+    let current = await verify(_ok_dedupeRooms(first.users));
+    if (current) return current;
+    const pages = Math.min(30, Math.ceil(first.total / _ok_pageSize));
+    for (let page = 1; page < pages; page++) {
+      const batch = await _ok_fetchDirectoryPage(page, _ok_pageSize, _ok_statusTimeout(deadline));
+      current = await verify(_ok_dedupeRooms(batch.users));
+      if (current) return current;
+    }
+  } catch (_) { return unknown; }
+  return original || unknown;
 }
 
 function _ok_externalURL(shareCode) {
@@ -759,27 +809,13 @@ globalThis.LiveParsePlugin = {
 
   async getRoomDetail(payload) {
     const runtimePayload = _ok_payload(payload);
-    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
-    const shareCode = target.shareCode;
-    if (target.verifiedLive) return target.room;
-    const cached = target.room || _ok_runtime.rooms[shareCode] || null;
-    try {
-      return _ok_applyFreshStatus(cached, shareCode, await _ok_fetchStatus(shareCode));
-    } catch (_) {
-      return cached || _ok_fallbackRoom(shareCode, "0");
-    }
+    return _ok_refreshFavorite(runtimePayload.roomId, runtimePayload.userId);
   },
 
   async getLiveState(payload) {
     const runtimePayload = _ok_payload(payload);
-    const target = await _ok_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
-    const shareCode = target.shareCode;
-    if (target.verifiedLive) return { liveState: "1" };
-    try {
-      return { liveState: _ok_statusLiveState(await _ok_fetchStatus(shareCode)) };
-    } catch (_) {
-      return { liveState: "0" };
-    }
+    const room = await _ok_refreshFavorite(runtimePayload.roomId, runtimePayload.userId);
+    return {liveState:room.liveState};
   },
 
   async resolveShare(payload) {

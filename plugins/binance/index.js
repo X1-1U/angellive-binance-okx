@@ -221,6 +221,7 @@ function _bn_pickPlayURLs(item) {
 function _bn_liveState(item, forceLive) {
   if (forceLive) return "1";
   const object = _bn_object(item);
+  if (object._statusUnknown) return "3";
   const raw = _bn_num(
     object.liveStatus !== undefined ? object.liveStatus : object.status,
     -1
@@ -287,10 +288,11 @@ async function _bn_fetchLegacyLiveList() {
   return Array.isArray(list) ? list : [];
 }
 
-async function _bn_fetchLiveDirectoryPage(pageIndex) {
+async function _bn_fetchLiveDirectoryPage(pageIndex, timeout) {
   const result = await _bn_requestJSON({
     url: `${_bn_baseURL}/bapi/composite/v1/friendly/pgc/feed/live/list`,
     method: "POST",
+    timeout: timeout,
     headers: {
       "Content-Type": "application/json",
       versioncode: "web"
@@ -521,29 +523,38 @@ async function _bn_loadLiveList() {
   return liveList;
 }
 
-async function _bn_fetchRoomDetail(roomId) {
+async function _bn_fetchRoomDetail(roomId, timeout) {
   const id = _bn_parseRoomId(roomId);
   if (!id) _bn_throw("INVALID_ARGS", "A Binance Square content ID is required", { roomId: roomId });
 
   const result = await _bn_requestJSON({
-    url: `${_bn_baseURL}/bapi/square/v2/friendly/square-live/space/room-detail?contentId=${encodeURIComponent(id)}`
+    url: `${_bn_baseURL}/bapi/square/v2/friendly/square-live/space/room-detail?contentId=${encodeURIComponent(id)}`,
+    timeout: timeout
   });
   const data = _bn_object(result.data);
   if (!_bn_pickId(data)) data.contentId = id;
   return data;
 }
 
-async function _bn_fetchContentDetail(contentId) {
+async function _bn_fetchContentDetail(contentId, timeout) {
   const id = _bn_str(contentId);
   const result = await _bn_requestJSON({
-    url: `${_bn_baseURL}/bapi/composite/v3/friendly/pgc/content/${encodeURIComponent(id)}`
+    url: `${_bn_baseURL}/bapi/composite/v3/friendly/pgc/content/${encodeURIComponent(id)}`,
+    timeout: timeout
   });
   const data = _bn_object(result.data);
   if (!_bn_pickId(data)) data.id = id;
   return data;
 }
 
-async function _bn_detailWithFallback(roomId) {
+function _bn_mergeFreshDetail(cached, fresh) {
+  const result = Object.assign({}, cached || {});
+  // Cached identity/artwork may fill gaps; cached status must never fill a fresh response.
+  for (const key of ["liveStatus", "status", "streamStatus", "liveScheduledTime", "liveVO", "spaceLive", "liveInfo", "_statusUnknown", "playUrls", "livePullUrls", "pullUrls", "hlsPlayUrl", "hlsUrl", "flvPlayUrl", "flvUrl", "replayUrl", "spaceLiveReplayLink", "liveReplayUrl", "replayURL"]) delete result[key];
+  return Object.assign(result, fresh);
+}
+
+async function _bn_detailWithFallback(roomId, deadline) {
   const id = _bn_parseRoomId(roomId);
   let cached = null;
   for (const item of _bn_runtime.liveList) {
@@ -553,12 +564,11 @@ async function _bn_detailWithFallback(roomId) {
     }
   }
   try {
-    return Object.assign({}, cached || {}, await _bn_fetchRoomDetail(id));
+    return _bn_mergeFreshDetail(cached, await _bn_fetchRoomDetail(id, deadline ? _bn_statusTimeout(deadline) : undefined));
   } catch (_) {
     try {
-      return Object.assign({}, cached || {}, await _bn_fetchContentDetail(id));
+      return _bn_mergeFreshDetail(cached, await _bn_fetchContentDetail(id, deadline ? _bn_statusTimeout(deadline) : undefined));
     } catch (error) {
-      if (cached) return cached;
       throw error;
     }
   }
@@ -591,15 +601,11 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
     const currentRoomId = _bn_pickId(current);
     if (current && currentRoomId) {
       try {
-        const detail = Object.assign({}, current, await _bn_fetchRoomDetail(currentRoomId));
+        const detail = _bn_mergeFreshDetail(current, await _bn_fetchRoomDetail(currentRoomId));
         if (_bn_liveState(detail, false) === "1") {
           return { roomId: currentRoomId, detail: detail };
         }
-      } catch (_) {
-        if (_bn_liveState(current, false) === "1") {
-          return { roomId: currentRoomId, detail: current };
-        }
-      }
+      } catch (_) {}
     }
   } catch (_) {}
 
@@ -610,6 +616,48 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
     roomId: originalRoomId,
     detail: originalDetail || (await _bn_detailWithFallback(originalRoomId))
   };
+}
+
+function _bn_statusTimeout(deadline) {
+  const remaining = (deadline - Date.now()) / 1000;
+  if (remaining <= 0) _bn_throw("NETWORK", "直播狀態查詢逾時", {});
+  return Math.min(3, remaining);
+}
+
+async function _bn_resolveFavoriteTarget(roomId, userId) {
+  const id = _bn_parseRoomId(roomId), uid = _bn_str(userId).trim(), deadline = Date.now() + 12000;
+  if (!id) _bn_throw("INVALID_ARGS", "roomId is required", {field:"roomId"});
+  const cached = _bn_runtime.liveList.find(function(item){return _bn_pickId(item) === id;}) || _bn_runtime.discovered[id];
+  const unknown = {roomId:id, detail:Object.assign({}, cached || {}, {contentId:id, userId:uid, _statusUnknown:true})};
+  let original;
+  try { original = await _bn_detailWithFallback(id, deadline); } catch (_) {}
+  if (original && _bn_liveState(original, false) === "1") return {roomId:id, detail:original};
+  if (!uid || uid === "0") return original ? {roomId:id, detail:original} : unknown;
+  const seen = Object.create(null); seen[id] = true;
+  async function verify(items) {
+    for (const item of items) {
+      const currentId = _bn_pickId(item);
+      if (!currentId || seen[currentId] || _bn_userIds(item).indexOf(uid) < 0) continue;
+      seen[currentId] = true;
+      const fresh = await _bn_fetchRoomDetail(currentId, _bn_statusTimeout(deadline));
+      if (_bn_liveState(fresh, false) === "1") return {roomId:currentId, detail:_bn_mergeFreshDetail(item, fresh)};
+    }
+    return null;
+  }
+  try {
+    // Remembered rooms are discovery hints only: a fresh detail must confirm every candidate.
+    const remembered = await verify(_bn_runtime.liveList.concat(Object.keys(_bn_runtime.discovered).map(function(key){return _bn_runtime.discovered[key];})));
+    if (remembered) return remembered;
+    let emptyPages = 0;
+    for (let page = 1; page <= _bn_liveDirectoryScanPages; page++) {
+      const items = await _bn_fetchLiveDirectoryPage(page, _bn_statusTimeout(deadline));
+      const current = await verify(items);
+      if (current) return current;
+      emptyPages = items.length ? 0 : emptyPages + 1;
+      if (emptyPages >= 2) break;
+    }
+  } catch (_) { return unknown; }
+  return original ? {roomId:id, detail:original} : unknown;
 }
 
 function _bn_quality(url, title, qn, format, isLive) {
@@ -907,13 +955,13 @@ globalThis.LiveParsePlugin = {
 
   async getRoomDetail(payload) {
     const runtimePayload = _bn_payload(payload);
-    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const target = await _bn_resolveFavoriteTarget(runtimePayload.roomId, runtimePayload.userId);
     return _bn_room(target.detail, false);
   },
 
   async getLiveState(payload) {
     const runtimePayload = _bn_payload(payload);
-    const target = await _bn_resolveCurrentTarget(runtimePayload.roomId, runtimePayload.userId);
+    const target = await _bn_resolveFavoriteTarget(runtimePayload.roomId, runtimePayload.userId);
     return { liveState: _bn_liveState(target.detail, false) };
   },
 

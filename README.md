@@ -1,5 +1,9 @@
 # Binance + OKX + YouTube + Twitch Live for AngelLive
 
+2026-10-13 收藏狀態刷新修復：Binance 1.2.11、OKX 1.2.8、Twitch 1.2.1、Twitch 測試版本 0.2.1、YouTube 1.0.1。新查詢失敗時返回 `3`（未知），保留可取得的主播資料，不再把舊的直播中當成本次確認結果。Binance／OKX 收藏查詢使用 12 秒流程預算、每次請求最多 3 秒，目錄只作新場次發現線索，需重新查狀態確認；Twitch／YouTube 狀態請求最多 5 秒。Twitch 測試版收藏不等待標題翻譯，只套用已有翻譯快取。刷新插件後，再刷新收藏。
+
+回歸涵蓋快取在播→接口失敗→未知、明確下播、下一次恢復、缺少狀態、冷啟動追蹤新場次與查詢預算。官方接口實測 Binance／OKX 在播與 Twitch 在播／下播狀態；Apple TV 實機尚待驗證。若宿主完全無法執行插件回調，仍可能保留上次狀態，無法僅靠插件更新改變宿主行為。
+
 2026-10-02 OKX 1.2.7 HLS 相容性更新：播放提示改為官方契約的 `latencyMode: standard`，HLS 優先 `avPlayer`、備援 `mePlayer`，FLV 使用 `mePlayer`，取代舊的 `normal/avplayer/mpv/ijk` 值。Binance 1.2.9 已使用相同 HLS 核心順序，本輪不改其播放或彈幕。這是核心選擇修正，不是保證消除所有卡頓；Apple TV 2.0.0（24）尚未實機驗證。
 
 本輪上游採樣：Binance 房間 `46616480023866` 共 12 次清單／分片採樣，12 個不同序號、0 次失敗，窗口約 2.885–2.973 秒；不等同連續解碼測試。OKX 在播放解析階段回報 `INVALID_RESPONSE`，未進入 HLS 分片檢查，不能宣稱 OKX 實網流暢度通過。兩平台與 YouTube／Twitch 契約測試及打包校驗通過。
@@ -143,10 +147,11 @@ node tests/twitch-test-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.10.zip
-dist/okx-1.2.7.zip
-dist/youtube-tw-1.0.0.zip
-dist/twitch-live-1.2.0.zip
+dist/binance-1.2.11.zip
+dist/okx-1.2.8.zip
+dist/youtube-tw-1.0.1.zip
+dist/twitch-live-1.2.1.zip
+dist/twitch-live-test-0.2.1.zip
 dist/source.json
 dist/source-binance.json
 dist/source-okx.json

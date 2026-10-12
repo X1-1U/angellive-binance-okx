@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-05T12:08:03Z",
+  "generatedAt": "2026-10-12T18:55:56Z",
   "sourceName": "twitch-live 測試版本 for AngelLive",
   "plugins": [
     {
       "pluginId": "twitch-live-test",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "platform": "twitch-live-test",
       "platformName": "twitch-live 測試版本",
       "platformDescription": "Twitch 測試版：標題與聊天室翻譯成繁體中文、支援宿主即時字幕的播放線路（非官方實驗版）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.1.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.0.zip",
-      "sha256": "56ef3eea6245f5bc9f3cca78064dd19b7b9e4de5b05a31f2d70d8c0275df1d8f",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/twitch-live-test-0.2.1.zip",
+      "sha256": "eab7802ceb167f578644d66afa3fbbe1d984f151bb12b21b07ecab17fac38a2a",
       "changelog": [
+        "0.2.1：收藏先返回即時直播狀態，標題只套用已有翻譯快取；不等待翻譯 API；狀態查詢失敗顯示未知，避免刷新超時後沿用舊直播標記",
         "0.2.0：房間標題與聊天室翻譯成繁體中文，使用自架的 Gemini 翻譯服務；不需在 AngelLive 內做任何設定，插件不含密碼；只傳送標題與聊天文字、不含暱稱，失敗或被限流時顯示原文；分類改用 Twitch 官方繁中名稱；單一畫質線路優先 KSME 內核，讓宿主的即時語音字幕可以掛載；自動畫質排到最後且不支援字幕",
         "0.1.0：獨立測試版，基於正式版 1.2.0；開播抽樣比較 site／embed 官方入口的廣告標記，保留正常播放回退；不保證去廣告、不處理中途廣告"
       ],
@@ -42,7 +43,8 @@
           "status": "available"
         },
         "liveState": {
-          "status": "available"
+          "status": "available",
+          "reason": "即時查詢官方直播狀態；刷新失敗顯示未知，不沿用舊直播標記"
         },
         "playback": {
           "status": "partial",
