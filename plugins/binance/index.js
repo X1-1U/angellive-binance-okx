@@ -621,11 +621,28 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
 function _bn_statusTimeout(deadline) {
   const remaining = (deadline - Date.now()) / 1000;
   if (remaining <= 0) _bn_throw("NETWORK", "直播狀態查詢逾時", {});
-  return Math.min(3, remaining);
+  return Math.min(8, remaining);
+}
+
+const _bn_favoritePages = Object.create(null), _bn_favoritePagesPending = Object.create(null);
+async function _bn_favoriteDirectoryPage(page, deadline) {
+  const cached = _bn_favoritePages[page], pending = _bn_favoritePagesPending[page];
+  if (cached && Date.now() - cached.at < 15000) return cached.items;
+  if (pending && pending.deadline <= deadline) return pending.promise;
+  const flight = {deadline:deadline};
+  flight.promise = (async function() {
+    const items = await _bn_fetchLiveDirectoryPage(page, _bn_statusTimeout(deadline));
+    _bn_favoritePages[page] = {at:Date.now(),items:items};
+    _bn_rememberLiveItems(items.filter(_bn_liveCard), Date.now());
+    return items;
+  })();
+  _bn_favoritePagesPending[page] = flight;
+  try { return await flight.promise; }
+  finally { if (_bn_favoritePagesPending[page] === flight) delete _bn_favoritePagesPending[page]; }
 }
 
 async function _bn_resolveFavoriteTarget(roomId, userId) {
-  const id = _bn_parseRoomId(roomId), uid = _bn_str(userId).trim(), deadline = Date.now() + 12000;
+  const id = _bn_parseRoomId(roomId), uid = _bn_str(userId).trim(), deadline = Date.now() + 16000;
   if (!id) _bn_throw("INVALID_ARGS", "roomId is required", {field:"roomId"});
   const cached = _bn_runtime.liveList.find(function(item){return _bn_pickId(item) === id;}) || _bn_runtime.discovered[id];
   const unknown = {roomId:id, detail:Object.assign({}, cached || {}, {contentId:id, userId:uid, _statusUnknown:true})};
@@ -648,15 +665,26 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
     // Remembered rooms are discovery hints only: a fresh detail must confirm every candidate.
     const remembered = await verify(_bn_runtime.liveList.concat(Object.keys(_bn_runtime.discovered).map(function(key){return _bn_runtime.discovered[key];})));
     if (remembered) return remembered;
-    let emptyPages = 0;
+    const directorySeen = Object.create(null);
+    let emptyLivePages = 0;
     for (let page = 1; page <= _bn_liveDirectoryScanPages; page++) {
-      const items = await _bn_fetchLiveDirectoryPage(page, _bn_statusTimeout(deadline));
+      _bn_statusTimeout(deadline);
+      const items = await _bn_favoriteDirectoryPage(page, deadline);
       const current = await verify(items);
       if (current) return current;
-      emptyPages = items.length ? 0 : emptyPages + 1;
-      if (emptyPages >= 2) break;
+      let added = 0;
+      for (const item of items) {
+        const currentId = _bn_pickId(item);
+        if (currentId && !directorySeen[currentId]) {directorySeen[currentId] = true; added++;}
+      }
+      // Stop repeated slices; a lack of live flags alone cannot prove later pages are empty.
+      emptyLivePages = added ? 0 : emptyLivePages + 1;
+      if (emptyLivePages >= 2) break;
     }
-  } catch (_) { return unknown; }
+  } catch (_) {
+    // An optional new-session lookup must not erase an already confirmed old-room status.
+    return original ? {roomId:id, detail:original} : unknown;
+  }
   return original ? {roomId:id, detail:original} : unknown;
 }
 

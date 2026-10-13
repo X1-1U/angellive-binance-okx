@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-10-12T18:55:56Z",
+  "generatedAt": "2026-10-13T13:07:33Z",
   "sourceName": "Binance Square Live for AngelLive",
   "plugins": [
     {
       "pluginId": "binance",
-      "version": "1.2.11",
+      "version": "1.2.12",
       "platform": "binance",
       "platformName": "Binance Square Live",
       "platformDescription": "Binance Square 公開直播與回放（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.11.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.12.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.11.zip",
-      "sha256": "9b820bf7f7eb93af2beec86fd244b30590707da602a88573972f04aa0be2b457",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.12.zip",
+      "sha256": "c8567f2eed183e0f5f47e97860572f5db477bc5d2caa52470db6666e7adc74f5",
       "changelog": [
+        "1.2.12：修正上一版收藏容易全部未知的回歸；每次狀態請求放寬至最多 8 秒，總預算 16 秒；目錄補查失敗仍保留本次已確認狀態，不用舊快取狀態；同批收藏共用分頁查詢並停止重複頁",
         "1.2.11：收藏狀態只使用新查詢結果；接口失敗或缺少狀態時顯示未知，不沿用舊直播標記；限制收藏查詢時間，保留主播新場次追蹤；移除過期播放資料備援",
         "1.2.10：直播預設改用 FLV。實測 Binance 直播 HLS 清單只有 3 個約 1 秒分片（窗口不足 3 秒），播放器沒有緩衝餘量，是週期性卡頓的來源；FLV 為連續串流不受影響。HLS 保留為備用線路，回放、目錄與彈幕不變",
         "1.2.9：彈幕請求失敗不再中斷連線並自動退避重試；聊天改用 zh-TW 並優先顯示原文；修正無序號訊息與首幀舊訊息重複出現；時鐘 WebSocket 改走 443 端口；收藏房間正在直播時跳過目錄掃描，房間校驗分批請求；分享連結嚴格校驗 binance.com 網域。播放設定與 1.2.8 相同",

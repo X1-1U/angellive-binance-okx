@@ -341,7 +341,20 @@ function _ok_makeDeviceId() {
   return _ok_runtime.deviceId;
 }
 
+let _ok_authPending = null;
 async function _ok_fetchAnonymousAuth(forceRefresh, deadline) {
+  if (!forceRefresh && _ok_runtime.anonymousToken && Date.now() - _ok_runtime.anonymousTokenFetchedAt < 10 * 60 * 1000) {
+    return {token:_ok_runtime.anonymousToken, userUid:_ok_runtime.anonymousUid};
+  }
+  if (_ok_authPending && (!deadline || _ok_authPending.deadline <= deadline)) return _ok_authPending.promise;
+  const flight = {deadline:deadline || Date.now() + 20000};
+  flight.promise = _ok_loadAnonymousAuth(forceRefresh, deadline);
+  _ok_authPending = flight;
+  try { return await flight.promise; }
+  finally { if (_ok_authPending === flight) _ok_authPending = null; }
+}
+
+async function _ok_loadAnonymousAuth(forceRefresh, deadline) {
   if (
     !forceRefresh &&
     _ok_runtime.anonymousToken &&
@@ -555,11 +568,28 @@ async function _ok_resolveCurrentTarget(roomId, userId) {
 function _ok_statusTimeout(deadline) {
   const remaining = (deadline - Date.now()) / 1000;
   if (remaining <= 0) _ok_throw("NETWORK", "直播狀態查詢逾時", {});
-  return Math.min(3, remaining);
+  return Math.min(8, remaining);
+}
+
+const _ok_favoritePages = Object.create(null), _ok_favoritePagesPending = Object.create(null);
+async function _ok_favoriteDirectoryPage(page, deadline) {
+  const cached = _ok_favoritePages[page], pending = _ok_favoritePagesPending[page];
+  if (cached && Date.now() - cached.at < 15000) return cached.data;
+  if (pending && pending.deadline <= deadline) return pending.promise;
+  const flight = {deadline:deadline};
+  flight.promise = (async function() {
+    const data = await _ok_fetchDirectoryPage(page, _ok_pageSize, _ok_statusTimeout(deadline));
+    _ok_favoritePages[page] = {at:Date.now(),data:data};
+    _ok_remember(_ok_dedupeRooms(data.users), Date.now());
+    return data;
+  })();
+  _ok_favoritePagesPending[page] = flight;
+  try { return await flight.promise; }
+  finally { if (_ok_favoritePagesPending[page] === flight) delete _ok_favoritePagesPending[page]; }
 }
 
 async function _ok_refreshFavorite(roomId, userId) {
-  const code = _ok_parseShareCode(roomId), uid = _ok_str(userId).trim(), deadline = Date.now() + 12000;
+  const code = _ok_parseShareCode(roomId), uid = _ok_str(userId).trim(), deadline = Date.now() + 16000;
   if (!code) _ok_throw("INVALID_ARGS", "roomId is required", {field:"roomId"});
   const unknown = Object.assign({}, _ok_runtime.rooms[code] || _ok_fallbackRoom(code, "3"), {liveState:"3"});
   if (uid) unknown.userId = uid;
@@ -584,16 +614,18 @@ async function _ok_refreshFavorite(roomId, userId) {
   try {
     const remembered = await verify(Object.keys(_ok_runtime.rooms).map(function(key){return _ok_runtime.rooms[key];}));
     if (remembered) return remembered;
-    const first = await _ok_fetchDirectoryPage(0, _ok_pageSize, _ok_statusTimeout(deadline));
+    _ok_statusTimeout(deadline);
+    const first = await _ok_favoriteDirectoryPage(0, deadline);
     let current = await verify(_ok_dedupeRooms(first.users));
     if (current) return current;
     const pages = Math.min(30, Math.ceil(first.total / _ok_pageSize));
     for (let page = 1; page < pages; page++) {
-      const batch = await _ok_fetchDirectoryPage(page, _ok_pageSize, _ok_statusTimeout(deadline));
+      _ok_statusTimeout(deadline);
+      const batch = await _ok_favoriteDirectoryPage(page, deadline);
       current = await verify(_ok_dedupeRooms(batch.users));
       if (current) return current;
     }
-  } catch (_) { return unknown; }
+  } catch (_) { return original || unknown; }
   return original || unknown;
 }
 

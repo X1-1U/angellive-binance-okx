@@ -552,15 +552,54 @@ for (const id of ["binance", "okx"]) {
   // Advance a fake clock by each request's full timeout: no real sleeps required.
   let clock = 100000;
   const slow = await loadPlugin(id, async (input) => {
-    assert.ok(input.request.timeout > 0 && input.request.timeout <= 3);
+    assert.ok(input.request.timeout > 0 && input.request.timeout <= 8);
     clock += input.request.timeout * 1000;
     throw new Error("simulated full request timeout");
   });
   slow.context.Date = {now:()=>clock};
   const slowResult = await slow.plugin.getRoomDetail({roomId:room.roomId,userId:room.userId});
   assert.equal(slowResult.liveState, "3");
-  assert.ok(clock <= 112000, `${id}: entire refresh must fit within its 12-second budget`);
+  assert.ok(clock <= 116000, `${id}: entire refresh must fit within its 16-second budget`);
   assert.ok(slow.requests.length <= 4);
+}
+// Four-second valid responses must not turn every favorite unknown after a slower route.
+for (const id of ["binance", "okx"]) {
+  let clock = 100000, mode = "live";
+  const route = await loadPlugin(id, async(input) => {
+    const url = input.request.url;
+    const delay = mode === "directory-failed" && (url.includes("feed/live/list") || url.includes("users-all")) ? 10000 : 4000;
+    clock += Math.min(delay, input.request.timeout * 1000);
+    if (delay > input.request.timeout * 1000) throw new Error("simulated slow route timeout");
+    if (id === "binance") return {code:"000000",success:true,data:{...binanceLiveItem,liveStatus:mode === "live" ? 1 : 3,streamStatus:mode === "live" ? 1 : 0}};
+    if (url.includes("anonymous-token")) return okxToken;
+    return {code:"0",data:{...okxStatus.data,status:mode === "live" ? 1 : 3,allowRecording:0}};
+  });
+  route.context.Date = {now:()=>clock};
+  const payload = {roomId:id === "binance" ? "49990000123456" : "fixtureShareCode-1",userId:"route-user"};
+  assert.equal((await route.plugin.getRoomDetail(payload)).liveState,"1", `${id}: 4-second valid status survives`);
+  mode = "directory-failed"; clock = 200000;
+  assert.equal((await route.plugin.getRoomDetail(payload)).liveState,"0", `${id}: optional directory failure must not erase freshly confirmed offline state`);
+  assert.ok(clock <= 216000);
+}
+// Binance's endpoint may repeat the same nonempty replay page. Stop repeated slices.
+// Concurrent favorites share directory discovery (and OKX anonymous auth), not their status.
+for (const id of ["binance", "okx"]) {
+  let auths = 0, directoryCalls = 0;
+  const batch = await loadPlugin(id, async(input) => {
+    const url = input.request.url;
+    if (url.includes("anonymous-token")) {auths++; await Promise.resolve(); return okxToken;}
+    if (url.includes("feed/live/list")) {
+      directoryCalls++; await Promise.resolve();
+      return {code:"000000",success:true,data:{vos:[{...binanceLiveItem,liveStatus:3}]}};
+    }
+    if (url.includes("users-all")) {directoryCalls++; await Promise.resolve(); return {code:"0",data:{total:0,users:[]}};}
+    return id === "binance" ? {code:"000000",success:true,data:{...binanceLiveItem,liveStatus:3,streamStatus:0}} : {code:"0",data:{status:3,allowRecording:0}};
+  });
+  batch.context.Date = {now:()=>100000};
+  const results = await Promise.all(["a","b","c"].map(userId=>batch.plugin.getRoomDetail({roomId:id === "binance" ? "49990000123456" : "fixtureShareCode-1",userId})));
+  assert.ok(results.every(room=>room.liveState === "0"));
+  assert.equal(directoryCalls,id === "binance" ? 3 : 1);
+  if (id === "okx") assert.equal(auths,1);
 }
 // The three other IDs use the same host freshness contract, including the translating test ID.
 // A cold favorite refresh must find a new session without a prior directory load.
