@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import vm from "node:vm";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,6 +30,9 @@ async function loadPlugin(pluginId, responder) {
       async request(input) {
         requests.push(input);
         const body = await responder(input);
+        if (body && body.__raw !== undefined) {
+          return { status: 200, headers: body.__headers, url: input.request.url, bodyText: body.__raw, bodyBase64: null };
+        }
         return {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -289,6 +293,19 @@ const okxList = await fixture("okx-live-list.json");
 const okxToken = await fixture("okx-anonymous-token.json");
 const okxStatus = await fixture("okx-live-status.json");
 const okxPlaybackInfo = await fixture("okx-playback-info.json");
+// OKX 2026-10 起把 /livestream/v1/info 回應加密：金鑰由 x-response-authorization 的 SHA-256 依 x-response-time 挑字元，AES-256-CBC、IV 全 0。
+function okxEncrypted(value) {
+  const authorization = crypto.randomBytes(16).toString("hex");
+  const millis = 1792072371141;
+  const seconds = Math.floor(millis / 1000);
+  const digest = crypto.createHash("sha256").update(authorization).digest("hex");
+  const start = Math.floor((seconds / 600) % 32), step = Math.floor((seconds / 3600) % 32);
+  const chars = new Array(32);
+  for (let c = 0; c < 32; c += 1) chars[31 - c] = digest[(start + (step + c) * c) % 32];
+  const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(chars.join(""), "utf8"), Buffer.alloc(16));
+  const raw = Buffer.concat([cipher.update(JSON.stringify(value), "utf8"), cipher.final()]).toString("base64");
+  return { __raw: raw, __headers: { "Content-Type": "application/json", "X-Response-Authorization": authorization, "X-Response-Time": String(millis) } };
+}
 const okxNewest = await fixture("okx-danmaku-newest.json");
 const okxHistory = await fixture("okx-danmaku-history.json");
 const okxPush = await fixture("okx-danmaku-push.json");
@@ -298,7 +315,7 @@ const okx = await loadPlugin("okx", async (input) => {
   if (url.includes("anonymous-token")) return okxToken;
   if (url.includes("/status?shareCode=oldFixtureShare-1")) return {code:"0", data:{status:3}};
   if (url.includes("/status?")) return okxStatus;
-  if (url.includes("/livestream/v1/info?")) return okxPlaybackInfo;
+  if (url.includes("/livestream/v1/info?")) return okxEncrypted(okxPlaybackInfo);
   throw new Error(`Unexpected OKX URL: ${url}`);
 });
 assert.equal(okx.plugin.apiVersion, 1);

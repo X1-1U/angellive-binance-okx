@@ -14,6 +14,8 @@
 
 HLS 診斷：`node scripts/smoke-hls.mjs binance` 或 `node scripts/smoke-hls.mjs okx`，可附加房間 ID 與採樣次數（預設 12，間隔 10 秒）。檢查清單序號、可用窗口及最新完整分片下載；不保存影音、不輸出簽名 URL。每次 curl 為新連線，下載時間不能等同播放器持續吞吐量或使用者家中網路；此檢查也不驗證解碼、音畫同步或實機緩衝。HLS 緩衝策略由宿主控制，不偽造上游清單或不存在的 buffer 參數。更新後選 HLS 連續觀看 10 分鐘，若能查看核心資訊，確認為 AVPlayer；仍卡頓時記錄核心、清晰度、發生時間再比較，避免把格式切換當成核心切換。
 
+2026-10-15 OKX 1.2.10：OKX 的播放資訊接口（`/livestream/v1/info`）改為回傳 base64 加密內容，舊版插件因此無法取得播放地址。新版按 OKX 網頁端相同方式解密（金鑰由回應標頭 `x-response-authorization`、`x-response-time` 推出，AES-256-CBC），以純 JS 實作；同時讓目錄取樣在收到 429 限流時停止。Binance、Twitch、YouTube 同日實測正常，未改動。
+
 2026-10-05 Binance 1.2.10：直播預設改用 FLV，HLS 降為備用。實測 Binance 直播 HLS 清單固定只有 3 個約 1 秒的分片（`TARGETDURATION:1`，窗口不足 3 秒，遠低於 HLS 建議的 6 個分片），播放器沒有緩衝餘量，網路稍有抖動就掉出窗口，這是 AVPlayer 與 ME 都會週期性卡頓的原因，插件無法改變上游清單。同一房間的 FLV 連續 20 秒下載穩定約 1.9 Mbps。此結論來自接口實測，尚未在 Apple TV 實機驗證 FLV 的觀感。
 
 2026-10-05 Twitch 1.2.0：改用官方遊戲／內容分類，移除全站熱門及中文獨立分類；播放與彈幕不變。
@@ -152,7 +154,7 @@ node tests/twitch-test-contract.test.mjs
 
 ```text
 dist/binance-1.2.12.zip
-dist/okx-1.2.9.zip
+dist/okx-1.2.10.zip
 dist/youtube-tw-1.0.1.zip
 dist/twitch-live-1.2.1.zip
 dist/twitch-live-test-0.2.1.zip
