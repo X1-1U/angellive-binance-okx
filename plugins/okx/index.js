@@ -72,6 +72,181 @@ function _ok_decode(value) {
   }
 }
 
+// ---- OKX 回應解密 ----
+// OKX 網頁接口（例如 /livestream/v1/info）改為回傳 base64 加密內容；金鑰材料在同一回應的
+// x-response-authorization 與 x-response-time 標頭裡，與 OKX 網頁端的解法相同：
+// key = 由 SHA-256(authorization) 的十六進位字串依時間挑出 32 個字元，AES-256-CBC、IV 全 0。
+// JavaScriptCore 沒有 crypto.subtle，以下為純 JS 實作（只需要解密）。
+function _ok_sha256Hex(text) {
+  const bytes = _ok_utf8Encode(text);
+  const K = [];
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  for (let n = 2, found = 0; found < 64; n += 1) {
+    let prime = true;
+    for (let d = 2; d * d <= n; d += 1) if (n % d === 0) { prime = false; break; }
+    if (prime) { K.push((Math.pow(n, 1 / 3) % 1) * 0x100000000 | 0); found += 1; }
+  }
+  const length = bytes.length;
+  const padded = bytes.slice();
+  padded.push(0x80);
+  while (padded.length % 64 !== 56) padded.push(0);
+  const bits = length * 8;
+  for (let i = 7; i >= 0; i -= 1) padded.push(i >= 4 ? Math.floor(bits / Math.pow(2, 8 * i)) & 0xff : (bits >>> (8 * i)) & 0xff);
+  const W = new Array(64);
+  const rotr = function (x, n) { return (x >>> n) | (x << (32 - n)); };
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let t = 0; t < 16; t += 1) {
+      W[t] = (padded[offset + t * 4] << 24) | (padded[offset + t * 4 + 1] << 16) | (padded[offset + t * 4 + 2] << 8) | padded[offset + t * 4 + 3];
+    }
+    for (let t = 16; t < 64; t += 1) {
+      const s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
+      const s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
+      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let t = 0; t < 64; t += 1) {
+      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) | 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+  }
+  return H.map(function (value) { return ("00000000" + (value >>> 0).toString(16)).slice(-8); }).join("");
+}
+
+function _ok_utf8Encode(text) {
+  const output = [];
+  const value = _ok_str(text);
+  for (let i = 0; i < value.length; i += 1) {
+    let code = value.charCodeAt(i);
+    if (code >= 0xd800 && code < 0xdc00 && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next < 0xe000) { code = 0x10000 + ((code - 0xd800) << 10) + (next - 0xdc00); i += 1; }
+    }
+    if (code < 0x80) output.push(code);
+    else if (code < 0x800) output.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+    else if (code < 0x10000) output.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    else output.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+  }
+  return output;
+}
+
+function _ok_utf8Decode(bytes) {
+  let output = "";
+  for (let i = 0; i < bytes.length;) {
+    const b0 = bytes[i];
+    let code, size;
+    if (b0 < 0x80) { code = b0; size = 1; }
+    else if (b0 >= 0xf0) { code = ((b0 & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63); size = 4; }
+    else if (b0 >= 0xe0) { code = ((b0 & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63); size = 3; }
+    else { code = ((b0 & 31) << 6) | (bytes[i + 1] & 63); size = 2; }
+    if (code >= 0x10000) { code -= 0x10000; output += String.fromCharCode(0xd800 + (code >> 10), 0xdc00 + (code & 1023)); }
+    else output += String.fromCharCode(code);
+    i += size;
+  }
+  return output;
+}
+
+function _ok_base64Bytes(text) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const clean = _ok_str(text).replace(/[^A-Za-z0-9+/]/g, "");
+  const output = [];
+  let buffer = 0, bits = 0;
+  for (let i = 0; i < clean.length; i += 1) {
+    buffer = (buffer << 6) | alphabet.indexOf(clean[i]);
+    bits += 6;
+    if (bits >= 8) { bits -= 8; output.push((buffer >> bits) & 0xff); }
+  }
+  return output;
+}
+
+let _ok_aesTables = null;
+function _ok_aesInit() {
+  if (_ok_aesTables) return _ok_aesTables;
+  const sbox = new Array(256), inv = new Array(256), exp = new Array(256), log = new Array(256);
+  for (let i = 0, x = 1; i < 256; i += 1) { exp[i] = x; log[x] = i; x ^= (x << 1) ^ (x & 0x80 ? 0x11b : 0); x &= 0xff; }
+  const mul = function (a, b) { return a && b ? exp[(log[a] + log[b]) % 255] : 0; };
+  for (let i = 0; i < 256; i += 1) {
+    let x = i ? exp[255 - log[i]] : 0;
+    let y = x;
+    for (let r = 0; r < 4; r += 1) { x = ((x << 1) | (x >> 7)) & 0xff; y ^= x; }
+    y ^= 0x63;
+    sbox[i] = y; inv[y] = i;
+  }
+  _ok_aesTables = { sbox: sbox, inv: inv, mul: mul };
+  return _ok_aesTables;
+}
+
+// AES-256-CBC 解密並移除 PKCS#7 填充。
+function _ok_aes256CbcDecrypt(keyBytes, ivBytes, data) {
+  const T = _ok_aesInit(), sbox = T.sbox, inv = T.inv, mul = T.mul;
+  const Nk = 8, Nr = 14, w = [];
+  for (let i = 0; i < Nk; i += 1) w.push([keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]]);
+  let rcon = 1;
+  for (let i = Nk; i < 4 * (Nr + 1); i += 1) {
+    let t = w[i - 1].slice();
+    if (i % Nk === 0) { t = [sbox[t[1]] ^ rcon, sbox[t[2]], sbox[t[3]], sbox[t[0]]]; rcon = mul(rcon, 2); }
+    else if (i % Nk === 4) t = t.map(function (b) { return sbox[b]; });
+    w.push([w[i - Nk][0] ^ t[0], w[i - Nk][1] ^ t[1], w[i - Nk][2] ^ t[2], w[i - Nk][3] ^ t[3]]);
+  }
+  if (data.length === 0 || data.length % 16 !== 0) throw new Error("AES data length");
+  const output = [];
+  let previous = ivBytes.slice();
+  for (let offset = 0; offset < data.length; offset += 16) {
+    const block = data.slice(offset, offset + 16);
+    const s = block.slice();
+    const addKey = function (round) { for (let c = 0; c < 4; c += 1) for (let r = 0; r < 4; r += 1) s[c * 4 + r] ^= w[round * 4 + c][r]; };
+    addKey(Nr);
+    for (let round = Nr - 1; round >= 0; round -= 1) {
+      // InvShiftRows + InvSubBytes
+      const copy = s.slice();
+      for (let c = 0; c < 4; c += 1) for (let r = 0; r < 4; r += 1) s[c * 4 + r] = inv[copy[((c - r + 4) % 4) * 4 + r]];
+      addKey(round);
+      if (round > 0) {
+        for (let c = 0; c < 4; c += 1) {
+          const a0 = s[c * 4], a1 = s[c * 4 + 1], a2 = s[c * 4 + 2], a3 = s[c * 4 + 3];
+          s[c * 4] = mul(a0, 14) ^ mul(a1, 11) ^ mul(a2, 13) ^ mul(a3, 9);
+          s[c * 4 + 1] = mul(a0, 9) ^ mul(a1, 14) ^ mul(a2, 11) ^ mul(a3, 13);
+          s[c * 4 + 2] = mul(a0, 13) ^ mul(a1, 9) ^ mul(a2, 14) ^ mul(a3, 11);
+          s[c * 4 + 3] = mul(a0, 11) ^ mul(a1, 13) ^ mul(a2, 9) ^ mul(a3, 14);
+        }
+      }
+    }
+    for (let i = 0; i < 16; i += 1) output.push(s[i] ^ previous[i]);
+    previous = block;
+  }
+  const pad = output[output.length - 1];
+  if (pad < 1 || pad > 16) throw new Error("AES padding");
+  return output.slice(0, output.length - pad);
+}
+
+function _ok_header(headers, name) {
+  const object = _ok_object(headers), lower = name.toLowerCase();
+  for (const key of Object.keys(object)) if (key.toLowerCase() === lower) return _ok_str(object[key]);
+  return "";
+}
+
+// 回傳解密後的文字；不是加密回應或解密失敗時回傳空字串。
+function _ok_decryptBody(response) {
+  const body = _ok_str(response && response.bodyText).trim();
+  const authorization = _ok_header(response && response.headers, "x-response-authorization");
+  const seconds = Math.floor(_ok_num(_ok_header(response && response.headers, "x-response-time"), 0) / 1000);
+  if (!body || !authorization || !(seconds > 0) || !/^[A-Za-z0-9+/=\s]+$/.test(body)) return "";
+  try {
+    const digest = _ok_sha256Hex(authorization);
+    const start = Math.floor((seconds / 600) % 32), step = Math.floor((seconds / 3600) % 32);
+    const chars = new Array(32);
+    for (let c = 0; c < 32; c += 1) chars[31 - c] = digest[(start + (step + c) * c) % 32];
+    const key = _ok_utf8Encode(chars.join("").substring(0, 32));
+    while (key.length < 32) key.push(48);
+    const zeroIV = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    return _ok_utf8Decode(_ok_aes256CbcDecrypt(key, zeroIV, _ok_base64Bytes(body)));
+  } catch (_) {
+    return "";
+  }
+}
+
 async function _ok_requestJSON(request) {
   if (!globalThis.Host || !Host.http || typeof Host.http.request !== "function") {
     _ok_throw("UNKNOWN", "Host.http.request is unavailable", {});
@@ -106,7 +281,8 @@ async function _ok_requestJSON(request) {
     });
   }
 
-  const parsed = _ok_parseJSON(response && response.bodyText);
+  let parsed = _ok_parseJSON(response && response.bodyText);
+  if (!parsed || typeof parsed !== "object") parsed = _ok_parseJSON(_ok_decryptBody(response));
   if (!parsed || typeof parsed !== "object") {
     _ok_throw("INVALID_RESPONSE", "OKX returned an invalid JSON response", { url: _ok_str(req.url) });
   }
@@ -229,6 +405,12 @@ function _ok_viewers() {
   return 0;
 }
 
+function _ok_isRateLimited(error) {
+  const object = _ok_object(error);
+  const text = _ok_str(object.message) + " " + _ok_str(object.code) + " " + _ok_str(error);
+  return object.code === "RATE_LIMITED" || /RATE_LIMITED|HTTP 429/.test(text);
+}
+
 function _ok_dedupeRooms(users) {
   const seen = {};
   const rooms = [];
@@ -276,10 +458,13 @@ async function _ok_loadAllRooms() {
         probes.push({ index: index, pageSize: pageSize });
       }
     }
-    // 限制同時請求數，避免大量收藏刷新時觸發上游限流。
-    for (let offset = 0; offset < probes.length; offset += 4) {
+    // 限制同時請求數，避免大量收藏刷新時觸發上游限流；一旦被限流（429）就停止取樣，
+    // 保留已取得的房間，避免繼續消耗額度而連帶讓播放、狀態請求也被擋。
+    let rateLimited = false;
+    for (let offset = 0; offset < probes.length && !rateLimited; offset += 4) {
       const batches = await Promise.all(probes.slice(offset, offset + 4).map(function (probe) {
-        return _ok_fetchDirectoryPage(probe.index, probe.pageSize).catch(function () {
+        return _ok_fetchDirectoryPage(probe.index, probe.pageSize).catch(function (error) {
+          if (_ok_isRateLimited(error)) rateLimited = true;
           return { users: [] };
         });
       }));
