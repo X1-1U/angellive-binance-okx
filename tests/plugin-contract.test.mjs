@@ -598,7 +598,8 @@ for (const id of ["binance", "okx"]) {
   batch.context.Date = {now:()=>100000};
   const results = await Promise.all(["a","b","c"].map(userId=>batch.plugin.getRoomDetail({roomId:id === "binance" ? "49990000123456" : "fixtureShareCode-1",userId})));
   assert.ok(results.every(room=>room.liveState === "0"));
-  assert.equal(directoryCalls,id === "binance" ? 3 : 1);
+  // Binance fetches one parallel batch of 4 pages; the three favorites still share it.
+  assert.equal(directoryCalls,id === "binance" ? 4 : 1);
   if (id === "okx") assert.equal(auths,1);
 }
 // The three other IDs use the same host freshness contract, including the translating test ID.
