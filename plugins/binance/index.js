@@ -548,6 +548,32 @@ async function _bn_fetchContentDetail(contentId, timeout) {
   return data;
 }
 
+// 主播個人頁會給出最新一場直播的 contentId；部分在播房間不會出現在直播目錄，只靠目錄會退回舊場次的回放。
+// liveStatusVO.isLive 對正在直播的房間也可能是 false，因此只把 contentId 當線索，狀態仍以 room-detail 確認。
+async function _bn_fetchUserLatestLiveId(userId, timeout) {
+  const uid = _bn_str(userId).trim();
+  if (!uid || uid === "0") return "";
+  const result = await _bn_requestJSON({
+    url: `${_bn_baseURL}/bapi/composite/v3/friendly/pgc/user/client`,
+    method: "POST",
+    timeout: timeout,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ squareUid: uid })
+  });
+  const data = _bn_object(result.data);
+  if (_bn_str(data.squareUid) && _bn_str(data.squareUid) !== uid) return "";
+  return _bn_parseRoomId(_bn_str(_bn_object(data.liveStatusVO).contentId));
+}
+
+async function _bn_latestLiveByUser(userId, excludeId, timeout) {
+  const latestId = await _bn_fetchUserLatestLiveId(userId, timeout);
+  if (!latestId || latestId === excludeId) return null;
+  const detail = await _bn_fetchRoomDetail(latestId, timeout);
+  if (_bn_liveState(detail, false) !== "1") return null;
+  _bn_rememberLiveItems([detail]);
+  return { roomId: latestId, detail: detail };
+}
+
 function _bn_mergeFreshDetail(cached, fresh) {
   const result = Object.assign({}, cached || {});
   // Cached identity/artwork may fill gaps; cached status must never fill a fresh response.
@@ -597,6 +623,10 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
       }
     } catch (_) {}
   }
+  try {
+    const latest = await _bn_latestLiveByUser(userId, originalRoomId);
+    if (latest) return latest;
+  } catch (_) {}
   try {
     const current = await _bn_findCurrentLiveByUser(userId);
     const currentRoomId = _bn_pickId(current);
@@ -651,6 +681,10 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
   try { original = await _bn_detailWithFallback(id, deadline); } catch (_) {}
   if (original && _bn_liveState(original, false) === "1") return {roomId:id, detail:original};
   if (!uid || uid === "0") return original ? {roomId:id, detail:original} : unknown;
+  try {
+    const latest = await _bn_latestLiveByUser(uid, id, _bn_statusTimeout(deadline));
+    if (latest) return latest;
+  } catch (_) {}
   const seen = Object.create(null); seen[id] = true;
   async function verify(items) {
     for (const item of items) {

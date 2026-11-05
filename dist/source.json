@@ -1,6 +1,6 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-11-04T16:14:19Z",
+  "generatedAt": "2026-11-05T16:24:23Z",
   "sourceName": "Binance + OKX + YouTube + Twitch Live for AngelLive",
   "plugins": [
     {
@@ -13,9 +13,9 @@
         "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.13.zip"
       ],
       "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/binance-1.2.13.zip",
-      "sha256": "df12897ec4c570f9dd7c08ba7e53703c14faa3bdb244640be6cc8ea327e30127",
+      "sha256": "bc52f2692daf2071b7e1c3e841374244c30a33de8a3b62d5ca9c1ddd75310edc",
       "changelog": [
-        "1.2.13：修正收藏刷新時下播主播的直播狀態載入過慢；新場次目錄改為每批 4 頁並行查詢，實測耗時由約 5 秒降至約 1 秒，網路較慢的電視不再容易超出宿主刷新時限而無法載入狀態",
+        "1.2.13：修正主播開新場次後收藏仍停在舊回放：部分在播房間不會出現在直播目錄，現改由主播個人頁取得最新場次並重新確認狀態，播放與彈幕也跟著切到新場次；收藏的新場次目錄改為每批 4 頁並行查詢，下播主播的狀態載入由約 5 秒降至約 1 秒",
         "1.2.12：修正上一版收藏容易全部未知的回歸；每次狀態請求放寬至最多 8 秒，總預算 16 秒；目錄補查失敗仍保留本次已確認狀態，不用舊快取狀態；同批收藏共用分頁查詢並停止重複頁",
         "1.2.11：收藏狀態只使用新查詢結果；接口失敗或缺少狀態時顯示未知，不沿用舊直播標記；限制收藏查詢時間，保留主播新場次追蹤；移除過期播放資料備援",
         "1.2.10：直播預設改用 FLV。實測 Binance 直播 HLS 清單只有 3 個約 1 秒分片（窗口不足 3 秒），播放器沒有緩衝餘量，是週期性卡頓的來源；FLV 為連續串流不受影響。HLS 保留為備用線路，回放、目錄與彈幕不變",

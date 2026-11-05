@@ -621,6 +621,33 @@ for (const id of ["binance", "okx"]) {
   assert.equal(room.liveState, "1");
   assert.equal(room.roomId, id === "binance" ? "49990000123456" : "fixtureShareCode-1");
 }
+// A live session missing from the directory must still be found through the host's profile.
+{
+  let profileCalls = 0;
+  const hidden = await loadPlugin("binance", async (input) => {
+    const url = input.request.url;
+    if (url.includes("pgc/user/client")) {
+      profileCalls++;
+      assert.equal(JSON.parse(input.request.body).squareUid, "hidden-host-uid");
+      return {code:"000000",success:true,data:{squareUid:"hidden-host-uid",liveStatusVO:{isLive:false,contentId:49990000999999}}};
+    }
+    if (url.includes("room-detail")) {
+      if (url.includes("49990000999999")) return {code:"000000",success:true,data:{...binanceLiveItem,contentId:"49990000999999",liveStatus:1,status:2,streamStatus:0}};
+      return binanceDetail;
+    }
+    if (url.includes("feed/live/list")) return {code:"000000",success:true,data:{vos:[]}};
+    if (url.includes("pgc/feed") || url.includes("audio-live-recommend")) return {code:"000000",success:true,data:{}};
+    throw new Error("Unexpected hidden-session request " + url);
+  });
+  const payload = {roomId:"39715484101961",userId:"hidden-host-uid"};
+  const room = await hidden.plugin.getRoomDetail(payload);
+  assert.equal(room.liveState, "1", "profile-listed session overrides the old replay");
+  assert.equal(room.roomId, "49990000999999");
+  const playback = await hidden.plugin.getPlayback(payload);
+  assert.equal(playback[0].qualitys[0].roomId, "49990000999999");
+  assert.equal(playback[0].qualitys[0].playbackHints.isLive, true);
+  assert.ok(profileCalls >= 2);
+}
 for (const id of ["twitch-live", "twitch-live-test", "youtube-tw"]) {
   let phase = "live", translations = 0;
   const instance = await loadPlugin(id, async (input) => {
