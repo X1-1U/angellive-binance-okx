@@ -11,6 +11,7 @@ const _bn_cacheTTL = 30 * 1000;
 const _bn_discoveryTTL = 6 * 60 * 60 * 1000;
 const _bn_staleValidationLimit = 20;
 const _bn_validationConcurrency = 5;
+const _bn_favoritePageConcurrency = 4;
 const _bn_danmakuIntervalMs = 3000;
 const _bn_danmakuMaxIntervalMs = 30000;
 // 443 比 9443 更不容易被公司／公共網路防火牆攔截；Binance 官方同時提供兩個端口。
@@ -547,6 +548,32 @@ async function _bn_fetchContentDetail(contentId, timeout) {
   return data;
 }
 
+// 主播個人頁會給出最新一場直播的 contentId；部分在播房間不會出現在直播目錄，只靠目錄會退回舊場次的回放。
+// liveStatusVO.isLive 對正在直播的房間也可能是 false，因此只把 contentId 當線索，狀態仍以 room-detail 確認。
+async function _bn_fetchUserLatestLiveId(userId, timeout) {
+  const uid = _bn_str(userId).trim();
+  if (!uid || uid === "0") return "";
+  const result = await _bn_requestJSON({
+    url: `${_bn_baseURL}/bapi/composite/v3/friendly/pgc/user/client`,
+    method: "POST",
+    timeout: timeout,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ squareUid: uid })
+  });
+  const data = _bn_object(result.data);
+  if (_bn_str(data.squareUid) && _bn_str(data.squareUid) !== uid) return "";
+  return _bn_parseRoomId(_bn_str(_bn_object(data.liveStatusVO).contentId));
+}
+
+async function _bn_latestLiveByUser(userId, excludeId, timeout) {
+  const latestId = await _bn_fetchUserLatestLiveId(userId, timeout);
+  if (!latestId || latestId === excludeId) return null;
+  const detail = await _bn_fetchRoomDetail(latestId, timeout);
+  if (_bn_liveState(detail, false) !== "1") return null;
+  _bn_rememberLiveItems([detail]);
+  return { roomId: latestId, detail: detail };
+}
+
 function _bn_mergeFreshDetail(cached, fresh) {
   const result = Object.assign({}, cached || {});
   // Cached identity/artwork may fill gaps; cached status must never fill a fresh response.
@@ -596,6 +623,10 @@ async function _bn_resolveCurrentTarget(roomId, userId) {
       }
     } catch (_) {}
   }
+  try {
+    const latest = await _bn_latestLiveByUser(userId, originalRoomId);
+    if (latest) return latest;
+  } catch (_) {}
   try {
     const current = await _bn_findCurrentLiveByUser(userId);
     const currentRoomId = _bn_pickId(current);
@@ -650,6 +681,10 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
   try { original = await _bn_detailWithFallback(id, deadline); } catch (_) {}
   if (original && _bn_liveState(original, false) === "1") return {roomId:id, detail:original};
   if (!uid || uid === "0") return original ? {roomId:id, detail:original} : unknown;
+  try {
+    const latest = await _bn_latestLiveByUser(uid, id, _bn_statusTimeout(deadline));
+    if (latest) return latest;
+  } catch (_) {}
   const seen = Object.create(null); seen[id] = true;
   async function verify(items) {
     for (const item of items) {
@@ -667,19 +702,28 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
     if (remembered) return remembered;
     const directorySeen = Object.create(null);
     let emptyLivePages = 0;
-    for (let page = 1; page <= _bn_liveDirectoryScanPages; page++) {
+    // 分批並行抓目錄頁：逐頁串行在電視較慢的網路下要 5–15 秒，容易超出宿主的收藏刷新預算。
+    scan: for (let first = 1; first <= _bn_liveDirectoryScanPages; first += _bn_favoritePageConcurrency) {
       _bn_statusTimeout(deadline);
-      const items = await _bn_favoriteDirectoryPage(page, deadline);
-      const current = await verify(items);
-      if (current) return current;
-      let added = 0;
-      for (const item of items) {
-        const currentId = _bn_pickId(item);
-        if (currentId && !directorySeen[currentId]) {directorySeen[currentId] = true; added++;}
+      const pages = [];
+      for (let page = first; page < first + _bn_favoritePageConcurrency && page <= _bn_liveDirectoryScanPages; page++) pages.push(page);
+      const batch = await Promise.all(pages.map(function(page) {
+        return _bn_favoriteDirectoryPage(page, deadline).then(function(items) { return {items:items}; }, function(error) { return {error:error}; });
+      }));
+      for (const result of batch) {
+        if (result.error) throw result.error;
+        const items = result.items;
+        const current = await verify(items);
+        if (current) return current;
+        let added = 0;
+        for (const item of items) {
+          const currentId = _bn_pickId(item);
+          if (currentId && !directorySeen[currentId]) {directorySeen[currentId] = true; added++;}
+        }
+        // Stop repeated slices; a lack of live flags alone cannot prove later pages are empty.
+        emptyLivePages = added ? 0 : emptyLivePages + 1;
+        if (emptyLivePages >= 2) break scan;
       }
-      // Stop repeated slices; a lack of live flags alone cannot prove later pages are empty.
-      emptyLivePages = added ? 0 : emptyLivePages + 1;
-      if (emptyLivePages >= 2) break;
     }
   } catch (_) {
     // An optional new-session lookup must not erase an already confirmed old-room status.
