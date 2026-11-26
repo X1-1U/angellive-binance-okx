@@ -123,17 +123,18 @@ async function _yt_player(id, timeout) {
   if (status.status !== "OK" && status.status !== "LIVE_STREAM_OFFLINE") _yt_error(status.status === "LOGIN_REQUIRED" ? "AUTH_REQUIRED" : "NOT_FOUND", _yt_str(status.reason) || "這個直播不支援免登入觀看");
   return result;
 }
-function _yt_room(id, p) {
+function _yt_room(id, p, fallback) {
   const v = p.videoDetails || {}, m = ((p.microformat || {}).playerMicroformatRenderer || {}).liveBroadcastDetails || {};
+  const previous = _yt_roomCache[id] || fallback || {};
   const live = typeof m.isLiveNow === "boolean" ? m.isLiveNow : v.isLive === true;
-  return _yt_rememberRoom({ roomId: id, userId: v.channelId || id, userName: v.author || "YouTube", roomTitle: v.title || id, roomCover: _yt_thumb(v.thumbnail), userHeadImg: "", liveState: v.isUpcoming ? "3" : (p.playabilityStatus || {}).status === "LIVE_STREAM_OFFLINE" ? "0" : live ? "1" : "0", liveType: "youtube-tw", liveWatchedCount: "0", biz: "" });
+  return _yt_rememberRoom({ roomId: id, userId: v.channelId || previous.userId || id, userName: v.author || previous.userName || "YouTube", roomTitle: v.title || previous.roomTitle || id, roomCover: _yt_thumb(v.thumbnail) || previous.roomCover || "", userHeadImg: previous.userHeadImg || "", liveState: v.isUpcoming ? "3" : (p.playabilityStatus || {}).status === "LIVE_STREAM_OFFLINE" ? "0" : live ? "1" : "0", liveType: "youtube-tw", liveWatchedCount: "0", biz: "" });
 }
 async function _yt_refreshRoom(payload) {
   const id = _yt_requireID(payload.roomId);
   try {
     const player = await _yt_player(id, 5);
     if (player.playabilityStatus.status === "OK" && !player.videoDetails) throw new Error("Missing video details");
-    return _yt_room(id, player);
+    return _yt_room(id, player, {userId:payload.userId});
   }
   catch (_) {
     return Object.assign({}, _yt_roomCache[id] || {roomId:id,userId:payload.userId||id,userName:"YouTube",roomTitle:id,roomCover:"",userHeadImg:"",liveType:"youtube-tw",liveWatchedCount:"0",biz:""}, {liveState:"3"});

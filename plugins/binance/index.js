@@ -565,10 +565,10 @@ async function _bn_fetchUserLatestLiveId(userId, timeout) {
   return _bn_parseRoomId(_bn_str(_bn_object(data.liveStatusVO).contentId));
 }
 
-async function _bn_latestLiveByUser(userId, excludeId, timeout) {
-  const latestId = await _bn_fetchUserLatestLiveId(userId, timeout);
+async function _bn_latestLiveByUser(userId, excludeId, timeout, deadline) {
+  const latestId = await _bn_fetchUserLatestLiveId(userId, deadline ? _bn_statusTimeout(deadline) : timeout);
   if (!latestId || latestId === excludeId) return null;
-  const detail = await _bn_fetchRoomDetail(latestId, timeout);
+  const detail = await _bn_fetchRoomDetail(latestId, deadline ? _bn_statusTimeout(deadline) : timeout);
   if (_bn_liveState(detail, false) !== "1") return null;
   _bn_rememberLiveItems([detail]);
   return { roomId: latestId, detail: detail };
@@ -682,7 +682,7 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
   if (original && _bn_liveState(original, false) === "1") return {roomId:id, detail:original};
   if (!uid || uid === "0") return original ? {roomId:id, detail:original} : unknown;
   try {
-    const latest = await _bn_latestLiveByUser(uid, id, _bn_statusTimeout(deadline));
+    const latest = await _bn_latestLiveByUser(uid, id, undefined, deadline);
     if (latest) return latest;
   } catch (_) {}
   const seen = Object.create(null); seen[id] = true;
@@ -691,8 +691,10 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
       const currentId = _bn_pickId(item);
       if (!currentId || seen[currentId] || _bn_userIds(item).indexOf(uid) < 0) continue;
       seen[currentId] = true;
-      const fresh = await _bn_fetchRoomDetail(currentId, _bn_statusTimeout(deadline));
-      if (_bn_liveState(fresh, false) === "1") return {roomId:currentId, detail:_bn_mergeFreshDetail(item, fresh)};
+      try {
+        const fresh = await _bn_fetchRoomDetail(currentId, _bn_statusTimeout(deadline));
+        if (_bn_liveState(fresh, false) === "1") return {roomId:currentId, detail:_bn_mergeFreshDetail(item, fresh)};
+      } catch (_) { /* A failed candidate must not mask another candidate on the same page. */ }
     }
     return null;
   }
@@ -710,11 +712,15 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
       const batch = await Promise.all(pages.map(function(page) {
         return _bn_favoriteDirectoryPage(page, deadline).then(function(items) { return {items:items}; }, function(error) { return {error:error}; });
       }));
+      let successfulPages = 0;
       for (const result of batch) {
-        if (result.error) throw result.error;
+        if (result.error) { emptyLivePages = 0; continue; }
+        successfulPages++;
         const items = result.items;
-        const current = await verify(items);
-        if (current) return current;
+        try {
+          const current = await verify(items);
+          if (current) return current;
+        } catch (_) { emptyLivePages = 0; continue; }
         let added = 0;
         for (const item of items) {
           const currentId = _bn_pickId(item);
@@ -722,8 +728,9 @@ async function _bn_resolveFavoriteTarget(roomId, userId) {
         }
         // Stop repeated slices; a lack of live flags alone cannot prove later pages are empty.
         emptyLivePages = added ? 0 : emptyLivePages + 1;
-        if (emptyLivePages >= 2) break scan;
       }
+      // Inspect every successfully prefetched page before applying the stop heuristic.
+      if (!successfulPages || emptyLivePages >= 2) break scan;
     }
   } catch (_) {
     // An optional new-session lookup must not erase an already confirmed old-room status.

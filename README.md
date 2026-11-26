@@ -1,5 +1,9 @@
 # Binance + OKX + YouTube + Twitch Live for AngelLive
 
+2026-11-26 審查修復：Binance 1.2.14 嚴格按每次請求前的剩餘時間執行收藏查詢，並保留並行目錄的成功頁；OKX 1.2.10 逐一驗證同主播的場次，避免舊場擋住新場播放／彈幕，無回應的歷史訊息請求每 10 秒重試原序號；YouTube 1.0.2 下播回應缺少資料時保留收藏標題、主播、頻道 ID 和封面。Twitch 正式版與測試版不變。
+
+新回歸：`node --test tests/review-regressions.test.mjs`；完整測試：`node --test tests/*.test.mjs`。回歸覆蓋慢回應總預算、單頁／單候選失敗、同批空頁、OKX 舊場與新場、歷史請求未回應與恢復、YouTube 缺失資料與冷啟動身分。測試使用實際插件與模擬 HTTP／時鐘，不代表已完成 Apple TV 實機或真實解碼驗證。
+
 2026-11-06 Binance 1.2.13：修正主播開新場次後，收藏、播放與彈幕仍停在舊場次「回放」。實測主播「小二哥哥68」新場次正在直播且串流正常，但不在直播目錄（112 個房間）中，插件只靠目錄找新場次，因此退回舊房間的 MP4 回放。現先查主播個人頁的最新場次 `contentId`（個人頁的 `isLive` 對在播房間也可能是 false，故只作線索），再以房間詳情確認在播；查不到時仍回落到目錄掃描。另外，收藏的目錄掃描改為每批 4 頁並行，下播主播的狀態載入由約 5 秒降至約 1 秒。Apple TV 實機尚待驗證。
 
 2026-10-13 收藏「全部未知」回歸修復：Binance 1.2.12、OKX 1.2.9。上一版每次狀態請求僅 3 秒，稍慢的有效回應會被當成查詢失敗；現在每次最多 8 秒、整個收藏查詢預算 16 秒。新場次目錄補查失敗時保留**本次已確認**的房間狀態，未取得任何有效狀態才顯示未知，仍不採用舊的快取直播狀態。同批收藏共用短期的目錄分頁查詢，候選房間仍需重新向狀態接口確認；OKX 合併匿名 token 取得，減少並行重複請求。
@@ -153,9 +157,9 @@ node tests/twitch-test-contract.test.mjs
 建置會產生：
 
 ```text
-dist/binance-1.2.12.zip
-dist/okx-1.2.9.zip
-dist/youtube-tw-1.0.1.zip
+dist/binance-1.2.14.zip
+dist/okx-1.2.10.zip
+dist/youtube-tw-1.0.2.zip
 dist/twitch-live-1.2.1.zip
 dist/twitch-live-test-0.2.1.zip
 dist/source.json

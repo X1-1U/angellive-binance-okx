@@ -10,6 +10,7 @@ const _ok_cacheTTL = 30 * 1000;
 const _ok_discoveryTTL = 6 * 60 * 60 * 1000;
 const _ok_staleValidationLimit = 20;
 const _ok_danmakuHeartbeatMs = 5000;
+const _ok_danmakuHistoryTimeoutMs = 10000;
 const _ok_runtime = {
   rooms: {},
   roomSeenAt: {},
@@ -530,29 +531,29 @@ async function _ok_findCurrentRoom(shareCode) {
   return null;
 }
 
-async function _ok_findCurrentRoomByUser(userId) {
+async function _ok_findCurrentRoomsByUser(userId) {
   const target = _ok_str(userId).trim();
-  if (!target || target === "0") return null;
+  if (!target || target === "0") return [];
   const rooms = await _ok_fetchAllRooms();
-  for (const room of rooms) {
-    if (_ok_str(room.userId).trim() === target) return room;
-  }
-  return null;
+  return rooms.filter(function(room) { return _ok_str(room.userId).trim() === target; });
 }
 
 async function _ok_resolveCurrentTarget(roomId, userId) {
   const originalShareCode = _ok_parseShareCode(roomId);
   try {
-    const current = await _ok_findCurrentRoomByUser(userId);
-    if (current && current.roomId) {
-      const status = await _ok_fetchStatus(current.roomId);
-      if (_ok_statusLiveState(status) === "1") {
-        return {
-          shareCode: current.roomId,
-          room: _ok_applyFreshStatus(current, current.roomId, status),
-          verifiedLive: true
-        };
-      }
+    const candidates = await _ok_findCurrentRoomsByUser(userId);
+    for (const current of candidates) {
+      if (!current.roomId) continue;
+      try {
+        const status = await _ok_fetchStatus(current.roomId);
+        if (_ok_statusLiveState(status) === "1") {
+          return {
+            shareCode: current.roomId,
+            room: _ok_applyFreshStatus(current, current.roomId, status),
+            verifiedLive: true
+          };
+        }
+      } catch (_) { /* Validate the next session for this broadcaster. */ }
     }
   } catch (_) {}
   if (!originalShareCode) {
@@ -651,6 +652,19 @@ function _ok_textWrite(command, data) {
   return { kind: "text", text: _ok_wsRequest(command, data) };
 }
 
+function _ok_historyWrite(session, sequence) {
+  if (!session.historyInFlight || session.historySequence !== sequence) session.historyRequestIds = [];
+  const write = _ok_textWrite("WSGetMsgByPage", {channelId:session.channelId,lastSeq:sequence,limit:100});
+  const requestId = JSON.parse(write.text).requestId;
+  session.historyRequestIds.push(requestId);
+  while (session.historyRequestIds.length > 16) session.historyRequestIds.shift();
+  session.historyRequested = true;
+  session.historyInFlight = true;
+  session.historySequence = sequence;
+  session.historyRequestedAt = Date.now();
+  return write;
+}
+
 function _ok_wsData(value) {
   if (typeof value === "string") return _ok_object(_ok_parseJSON(value));
   return _ok_object(value);
@@ -731,16 +745,8 @@ function _ok_parseDanmakuFrame(session, text) {
       const sequence = _ok_str(entry && entry.seq);
       const channelId = _ok_str(entry && entry.channelId);
       if (channelId !== session.channelId || !sequence) continue;
-      if (session.historyLoaded && !_ok_seqGreater(sequence, session.lastSeq)) continue;
-      session.historyRequested = true;
-      session.historyInFlight = true;
-      writes.push(
-        _ok_textWrite("WSGetMsgByPage", {
-          channelId: session.channelId,
-          lastSeq: sequence,
-          limit: 100
-        })
-      );
+      if (session.historyConfirmedSeq && !_ok_seqGreater(sequence, session.historyConfirmedSeq)) continue;
+      writes.push(_ok_historyWrite(session, sequence));
       break;
     }
   }
@@ -753,8 +759,20 @@ function _ok_parseDanmakuFrame(session, text) {
   }
   if (!list.length && (data.textMessage || data.text || data.customMessage)) list = [data];
   const isHistory = command === "WSGetMsgByPage" || (session.historyRequested && !session.historyLoaded && !!data.channelId);
-  if (command === "WSGetMsgByPage") session.historyInFlight = false;
-  if (isHistory && list.length) session.historyLoaded = true;
+  const replyId = _ok_str(parsed.requestId);
+  const replyChannel = _ok_str(data.channelId);
+  const historyAcknowledged = command === "WSGetMsgByPage" && session.historyInFlight &&
+    (parsed.code == null || _ok_num(parsed.code, -1) === 0) &&
+    (!replyChannel || replyChannel === session.channelId) &&
+    (!replyId || session.historyRequestIds.indexOf(replyId) >= 0);
+  if (historyAcknowledged) {
+    if (_ok_seqGreater(session.historySequence, session.historyConfirmedSeq)) session.historyConfirmedSeq = session.historySequence;
+    session.historyLoaded = true;
+    session.historyInFlight = false;
+    session.historySequence = "";
+    session.historyRequestedAt = 0;
+    session.historyRequestIds = [];
+  }
 
   return {
     ok: true,
@@ -922,6 +940,10 @@ globalThis.LiveParsePlugin = {
       historyRequested: false,
       historyLoaded: false,
       historyInFlight: false,
+      historySequence: "",
+      historyRequestedAt: 0,
+      historyRequestIds: [],
+      historyConfirmedSeq: "",
       lastSeq: ""
     };
     return { ok: true };
@@ -940,12 +962,16 @@ globalThis.LiveParsePlugin = {
   async onDanmakuTick(payload) {
     const session = _ok_danmakuSession(payload);
     if (!session) _ok_throw("INVALID_ARGS", "Unknown danmaku session", {});
+    const writes = [
+      { kind: "text", text: "ping" },
+      _ok_textWrite("WSGetNewestSeq", { channelIdList: [session.channelId] })
+    ];
+    if (session.historyInFlight && session.historySequence && Date.now() - session.historyRequestedAt >= _ok_danmakuHistoryTimeoutMs) {
+      writes.push(_ok_historyWrite(session, session.historySequence));
+    }
     return {
       ok: true,
-      writes: [
-        { kind: "text", text: "ping" },
-        _ok_textWrite("WSGetNewestSeq", { channelIdList: [session.channelId] })
-      ],
+      writes: writes,
       timer: { mode: "heartbeat", intervalMs: _ok_danmakuHeartbeatMs }
     };
   },

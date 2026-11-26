@@ -1,20 +1,21 @@
 {
   "apiVersion": 1,
-  "generatedAt": "2026-11-05T16:24:23Z",
+  "generatedAt": "2026-11-26T13:17:00Z",
   "sourceName": "OKX Orbit Live for AngelLive",
   "plugins": [
     {
       "pluginId": "okx",
-      "version": "1.2.9",
+      "version": "1.2.10",
       "platform": "okx",
       "platformName": "OKX Orbit Live",
       "platformDescription": "OKX Orbit 公開直播、播放與聊天（非官方社群插件）",
       "zipURLs": [
-        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.9.zip"
+        "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.10.zip"
       ],
-      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.9.zip",
-      "sha256": "534b98b151040c668ebbf4e6e6ea0e51571c6446544c8d4f465994b8dca45bff",
+      "zipURL": "https://raw.githubusercontent.com/X1-1U/angellive-binance-okx/main/dist/okx-1.2.10.zip",
+      "sha256": "08b9542ed5399de6902fef4a11cb8c1610f214b96131f3ee712ff798266265af",
       "changelog": [
+        "1.2.10：播放與彈幕逐一確認同主播的候選房間；歷史請求無回應時每 10 秒重試原序號，依請求 ID 配對成功回應，避免延遲舊回應取消新請求；空成功回應也會完成該序號，保留無請求 ID 回應的相容性",
         "1.2.9：修正上一版收藏容易全部未知的回歸；每次狀態請求放寬至最多 8 秒，總預算 16 秒；新場次目錄補查失敗不覆蓋本次已確認狀態；合併同批匿名 token 與分頁查詢，降低重複請求",
         "1.2.8：收藏優先查詢房間即時狀態；接口失敗或缺少狀態時顯示未知，不再沿用快取直播或誤判下播；限制收藏查詢時間並保留新場次追蹤",
         "1.2.7：修正播放提示為官方支援的 standard、avPlayer／mePlayer；HLS 優先 AVPlayer、ME 備援，FLV 使用 ME；不更動彈幕及目錄，流暢度仍需裝置實測",
